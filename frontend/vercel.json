@@ -1,5 +1,4 @@
 {
-  "buildCommand": "echo \"/* auto generated in vercel */ \nexport default { \n  aws_project_region: '\\\"$AWS_PROJECT_REGION\\\"', \n  aws_cognito_region: '\\\"$AWS_PROJECT_REGION\\\"', \n  aws_user_pools_id: '\\\"$AWS_USER_POOLS_ID\\\"', \n  aws_user_pools_web_client_id: '\\\"$AWS_USER_POOLS_WEB_CLIENT_ID\\\"', \n  oauth: { domain: '\\\"$AWS_OAUTH_DOMAIN\\\"' }, \n  aws_cognito_username_attributes: [], \n  aws_cognito_social_providers: [], \n  aws_cognito_signup_attributes: ['EMAIL'], \n  aws_cognito_mfa_configuration: 'OPTIONAL', \n  aws_cognito_mfa_types: ['EMAIL'], \n  aws_cognito_password_protection_settings: { \n      passwordPolicyMinLength: 8, \n      passwordPolicyCharacters: [ \n          'REQUIRES_LOWERCASE', \n          'REQUIRES_UPPERCASE', \n          'REQUIRES_NUMBERS', \n          'REQUIRES_SYMBOLS' \n      ] \n  }, \n  aws_cognito_verification_mechanisms: ['EMAIL'] \n};\" > src/aws-exports.js && npm run build",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]

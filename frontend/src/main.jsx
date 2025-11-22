@@ -9,7 +9,15 @@ import {Amplify} from 'aws-amplify'
 import awsExports from './aws-exports.js'
 import '@aws-amplify/ui-react/styles.css';
 
-Amplify.configure(awsExports);
+const awsExports = import.meta.env.VITE_AWS_EXPORTS 
+  ? JSON.parse(import.meta.env.VITE_AWS_EXPORTS) 
+  : null;
+
+if (!awsExports) {
+  console.error("Missing VITE_AWS_EXPORTS env var");
+} else {
+  Amplify.configure(awsExports);
+}
 
 createRoot(document.getElementById('root')).render(
   // <StrictMode>
