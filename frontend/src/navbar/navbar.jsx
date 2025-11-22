@@ -2,7 +2,7 @@ import { useState } from "react";
 import { FaHome } from "react-icons/fa"; // "Home" icon
 import { Link } from "react-router-dom";
 
-export default function Navbar({signOut, user}) {
+export default function Navbar({ signOut, user }) {
     const [open, setOpen] = useState(false);
 
     return (
@@ -63,6 +63,10 @@ export default function Navbar({signOut, user}) {
                         >
                             Instances
                         </a>
+                        <div>Hello, {user?.signInDetails?.loginId || 'User'}</div>
+                        <button onClick={signOut} style={{ background: 'red', color: 'white', border: 'none', padding: '8px 16px', cursor: 'pointer' }}>
+                            Logout
+                        </button>
                     </div>
                 </div>
             )}
