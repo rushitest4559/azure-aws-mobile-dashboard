@@ -41,10 +41,3 @@ resource "aws_iam_user_policy_attachment" "amplify_IAM" {
   user = "amplify_IAM"
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess-Amplify"
 }
-
-resource "aws_iam_user" "test_user" {
-  name = "test_user"
-  tags = {
-    CreateBy = "Terraform"
-  }
-}
