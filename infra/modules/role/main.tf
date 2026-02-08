@@ -6,10 +6,24 @@ data "aws_iam_policy_document" "resource_fetcher_policy_doc" {
     effect = "Allow"
 
     actions = [
+      # Standard EC2 & Networking
       "ec2:DescribeInstances",
       "ec2:DescribeRegions",
-      # Future: "s3:ListAllMyBuckets",
-      # Future: "rds:DescribeDBInstances"
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeKeyPairs",
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeImages",        # For AMIs
+      
+      # Storage
+      "ec2:DescribeVolumes",
+      "ec2:DescribeSnapshots",
+      
+      # Load Balancing (ELBv2)
+      "elasticloadbalancing:DescribeLoadBalancers",
+      "elasticloadbalancing:DescribeTargetGroups",
+      
+      # Auto Scaling
+      "autoscaling:DescribeAutoScalingGroups"
     ]
 
     resources = ["*"]

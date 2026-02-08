@@ -1,7 +1,8 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Navbar from "./navbar/navbar";
-import { InstancesPage } from "./pages/instances";
+
 import Home from "./pages/home";
+import EC2DashboardHub from "./pages/EC2/EC2Dashboard";
 
 function App() {
   return (
@@ -10,7 +11,7 @@ function App() {
         <Navbar/>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/instances" element={<InstancesPage />} />
+          <Route path="/ec2" element={<EC2DashboardHub />} />
         </Routes>
       </Router>
     </div>

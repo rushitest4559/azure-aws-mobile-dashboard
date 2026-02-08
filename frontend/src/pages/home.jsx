@@ -8,7 +8,7 @@ export default function Home() {
   const services = [
     {
       name: "EC2 Instances",
-      path: "/instances",
+      path: "/ec2",
       description: "Manage virtual servers across all AWS regions.",
       icon: <FaServer />,
       color: "blue",
