@@ -6,7 +6,7 @@ export function InstancesPage() {
   const { data, error, refetch, isFetching } = useQuery({
     queryKey: ['ec2-instances'],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/aws/ec2/list`);
+      const res = await fetch(`${API_URL}/aws/ec2/instances`);
       if (!res.ok) throw new Error('Failed to fetch instances');
       return res.json();
     },
