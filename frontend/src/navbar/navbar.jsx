@@ -1,16 +1,23 @@
 import { useState } from "react";
-import { FaHome, FaServer, FaBars, FaTimes } from "react-icons/fa";
+import { 
+  FaHome, FaServer, FaBars, FaTimes, FaBoxOpen, 
+  FaCode, FaShieldAlt, FaTable, FaDatabase, FaCubes 
+} from "react-icons/fa";
 import { Link, useLocation } from "react-router-dom";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
 
-  // Helper to highlight the active link
   const isActive = (path) => location.pathname === path;
 
+  // Navigation items matching your new Home page grid
   const navLinks = [
-    { name: "Instances", path: "/instances", icon: <FaServer className="w-4 h-4" /> },
+    { name: "Instances", path: "/instances", icon: <FaServer /> },
+    { name: "S3", path: "/s3", icon: <FaBoxOpen /> },
+    { name: "Lambda", path: "/lambda", icon: <FaCode /> },
+    { name: "IAM", path: "/iam", icon: <FaShieldAlt /> },
+    { name: "RDS", path: "/rds", icon: <FaDatabase /> },
   ];
 
   return (
@@ -18,31 +25,31 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           
-          {/* LOGO / HOME */}
+          {/* LOGO */}
           <Link
             to="/"
             className="flex items-center space-x-2 group"
             onClick={() => setOpen(false)}
           >
-            <div className="bg-blue-600 p-1.5 rounded-lg transition-transform group-hover:scale-110">
+            <div className="bg-blue-600 p-1.5 rounded-lg transition-transform group-hover:scale-110 shadow-sm">
               <FaHome className="h-5 w-5 text-white" />
             </div>
             <span className="font-bold text-gray-900 tracking-tight text-lg">AWS Dash</span>
           </Link>
 
-          {/* DESKTOP LINKS */}
-          <div className="hidden sm:flex items-center space-x-1">
+          {/* DESKTOP LINKS (Hidden on small screens) */}
+          <div className="hidden lg:flex items-center space-x-1">
             {navLinks.map((link) => (
               <Link
                 key={link.path}
                 to={link.path}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-bold transition-all ${
                   isActive(link.path)
                     ? "bg-blue-50 text-blue-600"
-                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
                 }`}
               >
-                {link.icon}
+                <span className="text-base">{link.icon}</span>
                 <span>{link.name}</span>
               </Link>
             ))}
@@ -50,7 +57,7 @@ export default function Navbar() {
 
           {/* MOBILE TOGGLE */}
           <button
-            className="sm:hidden p-2 rounded-md text-gray-600 hover:bg-gray-100 focus:outline-none"
+            className="lg:hidden p-2 rounded-md text-gray-600 hover:bg-gray-100 transition-colors"
             onClick={() => setOpen(!open)}
           >
             {open ? <FaTimes className="w-6 h-6" /> : <FaBars className="w-6 h-6" />}
@@ -60,23 +67,37 @@ export default function Navbar() {
 
       {/* MOBILE MENU (Slide Down) */}
       <div
-        className={`sm:hidden bg-white border-b border-gray-200 overflow-hidden transition-all duration-300 ease-in-out ${
-          open ? "max-h-64 opacity-100" : "max-h-0 opacity-0"
+        className={`lg:hidden bg-white border-b border-gray-200 overflow-hidden transition-all duration-300 ease-in-out ${
+          open ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
-        <div className="px-4 pt-2 pb-6 space-y-2">
+        <div className="px-4 pt-2 pb-6 space-y-1">
+          {/* Home link for mobile */}
+          <Link
+            to="/"
+            onClick={() => setOpen(false)}
+            className={`flex items-center space-x-4 px-4 py-3 rounded-xl text-sm font-bold ${
+              isActive("/") ? "bg-blue-600 text-white" : "text-gray-600"
+            }`}
+          >
+            <FaHome /> <span>Dashboard Home</span>
+          </Link>
+
+          <div className="h-[1px] bg-gray-100 my-2 mx-4"></div>
+
+          {/* Service links for mobile */}
           {navLinks.map((link) => (
             <Link
               key={link.path}
               to={link.path}
               onClick={() => setOpen(false)}
-              className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-base font-semibold ${
+              className={`flex items-center space-x-4 px-4 py-3 rounded-xl text-sm font-bold ${
                 isActive(link.path)
-                  ? "bg-blue-600 text-white shadow-lg shadow-blue-200"
-                  : "bg-gray-50 text-gray-700 active:bg-gray-100"
+                  ? "bg-blue-600 text-white shadow-md shadow-blue-200"
+                  : "bg-gray-50 text-gray-600 active:bg-gray-100"
               }`}
             >
-              {link.icon}
+              <span className="text-lg">{link.icon}</span>
               <span>{link.name}</span>
             </Link>
           ))}
