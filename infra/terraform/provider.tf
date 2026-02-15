@@ -1,29 +1,53 @@
 terraform {
   required_version = ">= 1.5.0"
 
-  # 1. Backend Configuration (Stores state in S3 and locks via DynamoDB)
-  backend "s3" {
-    bucket         = "aws-mobile-dashboard-tf-state"
-    key            = "backend.tfstate"
-    region         = "ap-south-1"
-    encrypt        = true
-    dynamodb_table = "aws-mobile-dashboard-lock-table"
+  backend "azurerm" {
+    resource_group_name  = "tf-state-rg"
+    storage_account_name = "tfstate73e553d8"
+    container_name       = "tfstate-container"
+    key                  = "terraform.tfstate"
   }
 
-  # 2. Provider Version Locking (Standardizes the environment)
   required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.100"
+    }
+    # ADDED: Necessary for App Registrations and Entra ID resources
+    azuread = {
+      source  = "hashicorp/azuread"
+      version = "~> 2.47"
+    }
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0" # Allows minor updates but locks major version
+      version = "~> 5.0"
     }
     archive = {
       source  = "hashicorp/archive"
       version = "~> 2.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
 }
 
-# 3. Provider Configuration with Default Tags
+provider "azurerm" {
+  features {
+    resource_group {
+      prevent_deletion_if_contains_resources = false
+    }
+  }
+  subscription_id = var.subscription_id
+  tenant_id       = var.tenant_id
+}
+
+# ADDED: Configuration for the AzureAD provider
+provider "azuread" {
+  tenant_id = var.tenant_id
+}
+
 provider "aws" {
   region = "ap-south-1"
 

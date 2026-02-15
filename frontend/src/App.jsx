@@ -1,20 +1,38 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Navbar from "./navbar/navbar";
+import { MsalAuthenticationTemplate } from "@azure/msal-react";
+import { InteractionType } from "@azure/msal-browser";
 
+import Navbar from "./navbar/navbar";
 import Home from "./pages/home";
-import EC2DashboardHub from "./pages/EC2/EC2Dashboard";
+import StorageDashboard from "./pages/StorageDashboard";
+import AzureDetails from "./pages/AzureDetails";
+import S3Details from "./pages/S3Details";
 
 function App() {
+  // The loginRequest can be imported from your authConfig.js
+  const authRequest = {
+    scopes: ["User.Read"]
+  };
+
   return (
-    <div className="pt-14">
-      <Router>
-        <Navbar/>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/ec2" element={<EC2DashboardHub />} />
-        </Routes>
-      </Router>
-    </div>
+    // This Template wraps your entire app. 
+    // If not logged in, it triggers 'Redirect' automatically.
+    <MsalAuthenticationTemplate 
+      interactionType={InteractionType.Redirect} 
+      authenticationRequest={authRequest}
+    >
+      <div className="pt-14">
+        <Router>
+          <Navbar />
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/storage" element={<StorageDashboard />} />
+            <Route path="/azure/details/:accountName" element={<AzureDetails />} />
+            <Route path="/aws/details/:bucketName" element={<S3Details />} />
+          </Routes>
+        </Router>
+      </div>
+    </MsalAuthenticationTemplate>
   );
 }
 

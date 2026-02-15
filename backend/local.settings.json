@@ -1,0 +1,11 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "AZURE_SUBSCRIPTION_ID": "ee0be9cf-1cd4-4e1c-8f43-5bbec3127b77"
+  },
+  "Host": {
+    "CORS": "*"
+  }
+}

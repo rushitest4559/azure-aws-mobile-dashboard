@@ -1,15 +1,11 @@
-output "api_endpoint_url" {
-  description = "The live URL to access your AWS Resource Dashboard"
-  # We construct a friendly URL by appending your specific path to the base URL
-  value = "${module.apigateway.base_url}/aws/ec2/list"
+output "AZURE_CLIENT_ID" {
+  value = module.auth_setup.client_id
 }
 
-output "lambda_function_name" {
-  description = "The name of the deployed Lambda function"
-  value       = module.lambda.function_name
+output "AZURE_TENANT_ID" {
+  value = var.tenant_id
 }
 
-output "iam_role_arn" {
-  description = "The ARN of the IAM role being used by the Lambda"
-  value       = module.role.role_arn
+output "AWS_ROLE_ARN" {
+  value = module.aws_oidc.aws_role_arn
 }

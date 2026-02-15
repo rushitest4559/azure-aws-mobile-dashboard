@@ -1,9 +1,7 @@
-output "role_arn" {
-  description = "The ARN of the IAM role for the Lambda function"
-  value       = aws_iam_role.lambda_main_role.arn
+output "managed_identity_id" {
+  value = azurerm_user_assigned_identity.function_identity.id
 }
 
-output "role_name" {
-  description = "The name of the IAM role"
-  value       = aws_iam_role.lambda_main_role.name
+output "principal_id" {
+  value = azurerm_user_assigned_identity.function_identity.principal_id
 }

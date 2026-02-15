@@ -1,0 +1,4 @@
+azure-functions
+boto3
+azure-identity
+azure-mgmt-storage

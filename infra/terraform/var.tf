@@ -1,17 +1,7 @@
-variable "aws_region" {
-  description = "The AWS region to deploy all resources into"
-  type        = string
-  default     = "ap-south-1"
-}
-
-variable "project_name" {
-  description = "The name of the project, used for naming and tagging"
-  type        = string
-  default     = "aws-mobile-dashboard"
-}
-
-variable "environment" {
-  description = "Deployment environment (e.g. Dev, Prod)"
-  type        = string
-  default     = "Dev"
-}
+variable "subscription_id" { type = string }
+variable "tenant_id"       { type = string }
+variable "location"        { default = "East US" }
+variable "resource_group_name" { default = "rg-mobile-dashboard" }
+variable "function_app_name"   { default = "func-mobile-dashboard" }
+variable "identity_name"       { default = "id-mobile-dashboard" }
+variable "frontend_url"        { default = "https://staticweb-project.vercel.app/" }

@@ -1,41 +1,31 @@
-import boto3
-from botocore.exceptions import ClientError
+import os
+from dotenv import load_dotenv
+from azure.identity import DefaultAzureCredential
+from azure.mgmt.resource import ResourceManagementClient
+from azure.mgmt.storage import StorageManagementClient
 
-REGION = "ap-south-1"
-BUCKET_NAME = "aws-mobile-dashboard-tf-state"
-TABLE_NAME = "aws-mobile-dashboard-lock-table"
+load_dotenv()
+SUBSCRIPTION_ID = os.getenv("ARM_SUBSCRIPTION_ID")
+RG_NAME, STG_NAME, CONTAINER, LOCATION = "tf-state-rg", "tfstate" + os.urandom(4).hex(), "tfstate-container", "eastus"
 
-def bootstrap():
-    s3 = boto3.client('s3', region_name=REGION)
-    ddb = boto3.client('dynamodb', region_name=REGION)
+credential = DefaultAzureCredential()
+res_client = ResourceManagementClient(credential, SUBSCRIPTION_ID)
+stg_client = StorageManagementClient(credential, SUBSCRIPTION_ID)
 
-    # 1. Create S3 Bucket with Mumbai Location Constraint
+def manage_storage():
     try:
-        print(f"Creating bucket: {BUCKET_NAME} in {REGION}...")
-        s3.create_bucket(
-            Bucket=BUCKET_NAME,
-            CreateBucketConfiguration={'LocationConstraint': REGION}
-        )
-        s3.put_bucket_versioning(
-            Bucket=BUCKET_NAME,
-            VersioningConfiguration={'Status': 'Enabled'}
-        )
-        print("S3 Bucket created successfully.")
-    except ClientError as e:
-        print(f"S3 Error: {e.response['Error']['Message']}")
-
-    # 2. Create DynamoDB Table
-    try:
-        print(f"Creating table: {TABLE_NAME}...")
-        ddb.create_table(
-            TableName=TABLE_NAME,
-            KeySchema=[{'AttributeName': 'LockID', 'KeyType': 'HASH'}],
-            AttributeDefinitions=[{'AttributeName': 'LockID', 'AttributeType': 'S'}],
-            BillingMode='PAY_PER_REQUEST' # More cost-effective for small projects
-        )
-        print("DynamoDB Table created successfully.")
-    except ClientError as e:
-        print(f"DynamoDB Error: {e.response['Error']['Message']}")
+        if res_client.resource_groups.check_existence(RG_NAME):
+            if input(f"RG {RG_NAME} exists. Delete? (y/n): ").lower() == 'y':
+                res_client.resource_groups.begin_delete(RG_NAME).result()
+                print("Deleted.")
+        else:
+            if input(f"RG {RG_NAME} not found. Create stack? (y/n): ").lower() == 'y':
+                res_client.resource_groups.create_or_update(RG_NAME, {"location": LOCATION})
+                stg_client.storage_accounts.begin_create(RG_NAME, STG_NAME, {"location": LOCATION, "sku": {"name": "Standard_LRS"}, "kind": "StorageV2"}).result()
+                stg_client.blob_containers.create(RG_NAME, STG_NAME, CONTAINER, {})
+                print(f"Created RG: {RG_NAME}, Account: {STG_NAME}, Container: {CONTAINER}")
+    except Exception as e:
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
-    bootstrap()
+    manage_storage()
