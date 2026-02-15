@@ -23,7 +23,7 @@ const S3Details = () => {
             // secureFetch attaches the Microsoft token even for AWS-related calls
             // because the Azure Function is the "gatekeeper" for everything.
             const res = await secureFetch(
-                `${import.meta.env.VITE_API_URL}/api/aws/details?bucket_name=${bucketName}`
+                `${import.meta.env.VITE_API_URL}/aws/details?bucket_name=${bucketName}`
             );
 
             if (!res.ok) {

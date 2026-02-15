@@ -23,7 +23,7 @@ const AzureDetails = () => {
         queryFn: async () => {
             // Use secureFetch instead of fetch
             const res = await secureFetch(
-                `${import.meta.env.VITE_API_URL}/api/azure/details?account_name=${accountName}&resource_group=${rg}`
+                `${import.meta.env.VITE_API_URL}/azure/details?account_name=${accountName}&resource_group=${rg}`
             );
 
             if (!res.ok) {

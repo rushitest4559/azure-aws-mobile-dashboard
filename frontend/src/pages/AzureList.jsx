@@ -31,7 +31,7 @@ const AzureList = () => {
     queryKey: ['azureAccounts'],
     queryFn: async () => {
       // secureFetch automatically adds the Bearer token
-      const res = await secureFetch(`${import.meta.env.VITE_API_URL}/api/azure/list`);
+      const res = await secureFetch(`${import.meta.env.VITE_API_URL}/azure/list`);
 
       if (!res.ok) {
         // This allows React Query to catch 401 (Unauthorized) or 500 errors

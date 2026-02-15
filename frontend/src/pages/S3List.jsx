@@ -15,7 +15,7 @@ const S3List = () => {
     const { data: buckets = [], refetch, isFetching, error, isError } = useQuery({
         queryKey: ['s3Buckets'],
         queryFn: async () => {
-            const res = await secureFetch(`${import.meta.env.VITE_API_URL}/api/aws/list`);
+            const res = await secureFetch(`${import.meta.env.VITE_API_URL}/aws/list`);
 
             if (!res.ok) {
                 throw new Error(`Failed to fetch S3 buckets: ${res.statusText}`);
