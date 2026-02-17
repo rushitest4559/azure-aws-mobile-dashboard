@@ -40,6 +40,7 @@ module "azure_function" {
   location            = var.location
   subscription_id     = var.subscription_id
   managed_identity_id = module.role.managed_identity_id
+  managed_identity_client_id = module.role.managed_identity_client_id
   aws_role_arn        = module.aws_oidc.aws_role_arn
   backend_path        = "../../backend"
 }

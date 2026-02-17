@@ -17,8 +17,8 @@ function App() {
   return (
     // This Template wraps your entire app. 
     // If not logged in, it triggers 'Redirect' automatically.
-    <MsalAuthenticationTemplate 
-      interactionType={InteractionType.Redirect} 
+    <MsalAuthenticationTemplate
+      interactionType={InteractionType.Redirect}
       authenticationRequest={authRequest}
     >
       <div className="pt-14">

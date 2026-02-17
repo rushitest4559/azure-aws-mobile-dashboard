@@ -58,10 +58,14 @@ resource "azurerm_linux_function_app" "function_app" {
     }
     cors {
       allowed_origins = ["https://staticweb-project.vercel.app"]
+      support_credentials = true
     }
   }
 
   app_settings = {
+
+    AZURE_CLIENT_ID = var.managed_identity_client_id
+
     _DEPLOY_TAG                              = data.archive_file.python_zip.output_base64sha256
     FUNCTIONS_WORKER_RUNTIME                 = "python"
     AZURE_SUBSCRIPTION_ID                    = var.subscription_id
@@ -69,7 +73,7 @@ resource "azurerm_linux_function_app" "function_app" {
     AWS_ROLE_ARN                             = var.aws_role_arn # For S3 access via OIDC
     SCM_DO_BUILD_DURING_DEPLOYMENT           = "true"
     "AzureFunctionsJobHost__functionTimeout" = "00:02:00"
-    ENABLE_ORYX_BUILD = "true"
+    ENABLE_ORYX_BUILD                        = "true"
   }
   zip_deploy_file = data.archive_file.python_zip.output_path
 }

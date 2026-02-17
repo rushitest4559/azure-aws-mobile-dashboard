@@ -15,7 +15,7 @@ export const loginRequest = {
 };
 
 export const apiConfig = {
-    functionEndpoint: import.meta.env.VITE_FUNCTION_ENDPOINT,
+    functionEndpoint: import.meta.env.VITE_API_URL,
     // The scope usually looks like "api://<client-id>/user_impersonation"
     scopes: [`api://${import.meta.env.VITE_AZURE_CLIENT_ID}/user_impersonation`]
 };
