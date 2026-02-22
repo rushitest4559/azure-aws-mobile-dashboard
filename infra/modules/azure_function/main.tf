@@ -70,7 +70,7 @@ resource "azurerm_linux_function_app" "function_app" {
       # Crucial: Must match exactly what is in your authConfig.js scopes
       allowed_audiences = [
         var.azured_app_client_id,
-        "api://${var.azured_app_client_id}"
+        "api://mobile-dashboard-api-rushikesh"
       ]
       
       allowed_applications = [var.azured_app_client_id]

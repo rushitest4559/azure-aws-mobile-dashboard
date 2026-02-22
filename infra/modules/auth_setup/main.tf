@@ -27,7 +27,7 @@ resource "azuread_application" "auth_app" {
 # 2. Attach the Identifier URI (Avoids self-reference error)
 resource "azuread_application_identifier_uri" "app_uri" {
   application_id = azuread_application.auth_app.id
-  identifier_uri = "api://${azuread_application.auth_app.client_id}"
+  identifier_uri = "api://mobile-dashboard-api-rushikesh"
 }
 
 # 3. Create Service Principal

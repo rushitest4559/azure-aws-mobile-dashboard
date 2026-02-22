@@ -12,9 +12,7 @@ export const msalConfig = {
     }
 };
 
-// The Unique ID for your Backend API
-const API_RESOURCE_ID = import.meta.env.VITE_AZURE_API_RESOURCE_ID;
-const API_SCOPE = `api://${API_RESOURCE_ID}/user_impersonation`;
+const API_SCOPE = `api://mobile-dashboard-api-rushikesh/user_impersonation`;
 
 export const loginRequest = {
     // We request User.Read (from Graph) AND our custom API scope
