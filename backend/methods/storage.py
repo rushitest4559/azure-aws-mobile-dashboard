@@ -1,23 +1,45 @@
 import boto3
+import os
 import azure.identity
 import azure.mgmt.storage
 from botocore.exceptions import ClientError
 from typing import List, Dict, Any
 
+def get_aws_s3_client():
+    """
+    Helper to bridge Azure Managed Identity to AWS IAM Role via OIDC.
+    """
+    # 1. Get Azure Managed Identity token for the AWS audience
+    # client_id here is your Managed Identity's Client ID (from app_settings)
+    azure_cred = azure.identity.ManagedIdentityCredential(
+        client_id=os.environ.get("AZURE_CLIENT_ID")
+    )
+    azure_token = azure_cred.get_token("api://AzureADTokenExchange")
+
+    # 2. Exchange Azure JWT for AWS temporary credentials
+    sts_client = boto3.client('sts', region_name='us-east-1')
+    assumed_role = sts_client.assume_role_with_web_identity(
+        RoleArn=os.environ.get("AWS_ROLE_ARN"),
+        RoleSessionName="AzureFunctionS3Session",
+        WebIdentityToken=azure_token.token
+    )
+
+    # 3. Return S3 client with temporary AWS credentials
+    creds = assumed_role['Credentials']
+    return boto3.client(
+        's3',
+        aws_access_key_id=creds['AccessKeyId'],
+        aws_secret_access_key=creds['SecretAccessKey'],
+        aws_security_token=creds['SessionToken']
+    )
 
 def get_s3_buckets_with_metadata() -> List[Dict[str, str]]:
-    """
-    List all S3 buckets with basic metadata (name, creation date, region).
-    
-    Returns:
-        List of bucket metadata dictionaries.
-    """
-    s3_client = boto3.client('s3')
+    """Lists all S3 buckets using OIDC Bridge."""
+    s3_client = get_aws_s3_client() # Updated to use OIDC client
     buckets = s3_client.list_buckets()['Buckets']
     
     bucket_metadata = []
     for bucket in buckets:
-        # Get bucket region (None for us-east-1)
         location = s3_client.get_bucket_location(Bucket=bucket['Name']).get('LocationConstraint')
         bucket_metadata.append({
             'name': bucket['Name'],
@@ -27,73 +49,10 @@ def get_s3_buckets_with_metadata() -> List[Dict[str, str]]:
     
     return bucket_metadata
 
-
-def get_azure_storage_accounts_with_metadata(subscription_id: str) -> List[Dict[str, Any]]:
-    """
-    List Azure storage accounts with metadata for given subscription.
-    
-    Args:
-        subscription_id: Azure subscription ID
-        
-    Returns:
-        List of storage account metadata dictionaries.
-    """
-    credential = azure.identity.DefaultAzureCredential()
-    storage_client = azure.mgmt.storage.StorageManagementClient(credential, subscription_id)
-    
-    accounts = []
-    for account in storage_client.storage_accounts.list():
-        # Parse resource group from account ID
-        # /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Storage/storageAccounts/{name}
-        parts = account.id.split('/')
-        resource_group = parts[4] if len(parts) > 4 else 'unknown'
-        
-        accounts.append({
-            'name': account.name,
-            'location': account.location,
-            'sku': account.sku.name,
-            'kind': account.kind,
-            'resource_group': resource_group
-        })
-    
-    return accounts
-
-
-def safe_aws_call(s3_client, func_name: str, key: str, default: Any, **kwargs) -> Any:
-    """
-    Safely call AWS S3 API with error handling for missing resources.
-    
-    Args:
-        s3_client: boto3 S3 client
-        func_name: AWS function name (get_bucket_versioning, etc.)
-        key: Response key to extract
-        default: Default value if error occurs
-        **kwargs: Arguments for the AWS function
-        
-    Returns:
-        Value from response[key] or default
-    """
-    try:
-        func = getattr(s3_client, func_name)
-        response = func(**kwargs)
-        return response.get(key, default)
-    except ClientError:
-        return default
-
-
 def get_s3_bucket_details(bucket_name: str) -> Dict[str, Any]:
-    """
-    Get detailed metadata for specific S3 bucket.
+    """Gets detailed metadata for specific S3 bucket using OIDC Bridge."""
+    s3_client = get_aws_s3_client() # Updated to use OIDC client
     
-    Args:
-        bucket_name: Name of S3 bucket
-        
-    Returns:
-        Dictionary with bucket configuration details.
-    """
-    s3_client = boto3.client('s3')
-    
-    # Get bucket properties with safe error handling
     location = safe_aws_call(
         s3_client, 'get_bucket_location', 'LocationConstraint', 'us-east-1', Bucket=bucket_name
     )
@@ -108,29 +67,29 @@ def get_s3_bucket_details(bucket_name: str) -> Dict[str, Any]:
         'public_access': safe_aws_call(s3_client, 'get_public_access_block', 'PublicAccessBlockConfiguration', {}, Bucket=bucket_name)
     }
 
+# Azure functions remain unchanged as you stated they work perfectly
+def get_azure_storage_accounts_with_metadata(subscription_id: str) -> List[Dict[str, Any]]:
+    credential = azure.identity.DefaultAzureCredential()
+    storage_client = azure.mgmt.storage.StorageManagementClient(credential, subscription_id)
+    accounts = []
+    for account in storage_client.storage_accounts.list():
+        parts = account.id.split('/')
+        resource_group = parts[4] if len(parts) > 4 else 'unknown'
+        accounts.append({
+            'name': account.name,
+            'location': account.location,
+            'sku': account.sku.name,
+            'kind': account.kind,
+            'resource_group': resource_group
+        })
+    return accounts
 
 def get_azure_storage_details(subscription_id: str, resource_group: str, account_name: str) -> Dict[str, Any]:
-    """
-    Get detailed properties for specific Azure storage account.
-    
-    Args:
-        subscription_id: Azure subscription ID
-        resource_group: Resource group name
-        account_name: Storage account name
-        
-    Returns:
-        Dictionary with storage account details.
-    """
     credential = azure.identity.DefaultAzureCredential()
     client = azure.mgmt.storage.StorageManagementClient(credential, subscription_id)
-    
-    # Fetch account properties
     account = client.storage_accounts.get_properties(resource_group, account_name)
-    
     def get_enum_value(attr) -> str:
-        """Safely extract string value from enum or None."""
         return getattr(attr, 'value', attr) if attr else None
-    
     return {
         'name': account.name,
         'location': account.location,
@@ -147,3 +106,11 @@ def get_azure_storage_details(subscription_id: str, resource_group: str, account
         'encryption': account.encryption.as_dict() if account.encryption else {},
         'tags': dict(account.tags) if account.tags else {}
     }
+
+def safe_aws_call(s3_client, func_name: str, key: str, default: Any, **kwargs) -> Any:
+    try:
+        func = getattr(s3_client, func_name)
+        response = func(**kwargs)
+        return response.get(key, default)
+    except ClientError:
+        return default
