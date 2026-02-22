@@ -1,5 +1,5 @@
 import { InteractionRequiredAuthError } from "@azure/msal-browser";
-import { msalInstance } from "./main"; 
+import { msalInstance } from "./main";
 import { apiConfig, loginRequest } from "./authConfig";
 
 export const getAccessToken = async () => {
@@ -19,13 +19,14 @@ export const getAccessToken = async () => {
         console.warn("No active account found, redirecting to login...");
         // Use loginRequest (User.Read) for the initial login
         await msalInstance.loginRedirect(loginRequest);
-        return null; 
+        return null;
     }
 
     try {
         // 3. Try silent token acquisition for the API scope specifically
+        // Change this line in getAccessToken.js
         const response = await msalInstance.acquireTokenSilent({
-            scopes: apiConfig.scopes, // "api://<client_id>/user_impersonation"
+            scopes: apiRequest.scopes, // Use apiRequest.scopes instead of apiConfig.scopes
             account: account
         });
         return response.accessToken;
@@ -33,9 +34,9 @@ export const getAccessToken = async () => {
         // 4. Handle expired tokens or interaction requirements
         if (error instanceof InteractionRequiredAuthError) {
             console.log("Token expired or interaction required, redirecting...");
-            await msalInstance.acquireTokenRedirect({ 
+            await msalInstance.acquireTokenRedirect({
                 scopes: apiConfig.scopes,
-                account: account 
+                account: account
             });
         }
         throw error;
@@ -47,7 +48,7 @@ export const getAccessToken = async () => {
  */
 export const secureFetch = async (url, options = {}) => {
     const token = await getAccessToken();
-    
+
     // If the browser is redirecting for login, token will be null
     if (!token) return;
 

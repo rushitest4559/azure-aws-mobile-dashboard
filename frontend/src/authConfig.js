@@ -25,4 +25,6 @@ export const apiRequest = {
 
 export const apiConfig = {
     functionEndpoint: import.meta.env.VITE_API_URL,
+    // Add this back so getAccessToken doesn't fail!
+    scopes: [`api://${import.meta.env.VITE_AZURE_CLIENT_ID}/user_impersonation`]
 };
