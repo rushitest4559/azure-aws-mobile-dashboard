@@ -3,6 +3,10 @@ variable "function_app_name" {
   type        = string
 }
 
+variable "azured_app_client_id" {
+  
+}
+
 variable "resource_group_name" {
   description = "Resource group name"
   type        = string

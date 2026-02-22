@@ -15,16 +15,27 @@ import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persist
 
 /**
  * MSAL Initialization
- * We initialize this OUTSIDE the component so it's only created once.
  */
 export const msalInstance = new PublicClientApplication(msalConfig);
 
-// Optional: Default to the first account if one is already logged in
-if (!msalInstance.getActiveAccount() && msalInstance.getAllAccounts().length > 0) {
-  msalInstance.setActiveAccount(msalInstance.getAllAccounts()[0]);
-}
+// CRITICAL FOR MOBILE: Handle the redirect response when the page reloads
+msalInstance.handleRedirectPromise()
+  .then((response) => {
+    if (response && response.account) {
+      msalInstance.setActiveAccount(response.account);
+    } else {
+      // Fallback: If no redirect response, check if we already have accounts in cache
+      const currentAccounts = msalInstance.getAllAccounts();
+      if (currentAccounts.length > 0 && !msalInstance.getActiveAccount()) {
+        msalInstance.setActiveAccount(currentAccounts[0]);
+      }
+    }
+  })
+  .catch((error) => {
+    console.error("MSAL Redirect Error:", error);
+  });
 
-// Listen for successful login events to update the active account
+// Listen for successful login events
 msalInstance.addEventCallback((event) => {
   if (event.eventType === EventType.LOGIN_SUCCESS && event.payload.account) {
     msalInstance.setActiveAccount(event.payload.account);
@@ -37,7 +48,8 @@ msalInstance.addEventCallback((event) => {
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      gcTime: 1000 * 60 * 60 * 24 * 365, // 1 Year
+      gcTime: 1000 * 60 * 60 * 24 * 365,
+      retry: 1, // Only retry once to avoid infinite loops on 401s
     },
   },
 })
@@ -52,10 +64,6 @@ persistQueryClient({
   maxAge: 1000 * 60 * 60 * 24 * 365,
 })
 
-/**
- * Render with nested Providers
- * MsalProvider should be near the top so all components can access auth state.
- */
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <MsalProvider instance={msalInstance}>

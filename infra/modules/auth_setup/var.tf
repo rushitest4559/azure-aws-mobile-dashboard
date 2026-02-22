@@ -1,7 +1,8 @@
-variable "frontend_url" {
-  type    = string
-  default = "https://staticweb-project.vercel.app/"
+variable "frontend_urls" {
+  type    = list(string)
+  default = ["https://staticweb-project.vercel.app/", "http://localhost:5173/"]
 }
+
 
 variable "tenant_id" {
   type = string

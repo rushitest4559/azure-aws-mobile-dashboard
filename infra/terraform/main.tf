@@ -17,7 +17,6 @@ module "role" {
 # 3. Entra ID / Auth Setup
 module "auth_setup" {
   source                        = "../modules/auth_setup"
-  frontend_url                  = var.frontend_url
   tenant_id                     = var.tenant_id
   managed_identity_principal_id = module.role.principal_id # Linked for Federated Identity
 }
@@ -43,4 +42,5 @@ module "azure_function" {
   managed_identity_client_id = module.role.managed_identity_client_id
   aws_role_arn        = module.aws_oidc.aws_role_arn
   backend_path        = "../../backend"
+  azured_app_client_id = module.auth_setup.client_id # Pass Client ID for Auth Settings
 }

@@ -8,6 +8,6 @@ resource "azurerm_user_assigned_identity" "function_identity" {
 # Allows the identity to read data inside the storage accounts
 resource "azurerm_role_assignment" "storage_reader" {
   scope                = "/subscriptions/${var.subscription_id}"
-  role_definition_name = "Storage Blob Data Reader"
+  role_definition_name = "Reader"
   principal_id         = azurerm_user_assigned_identity.function_identity.principal_id
 }

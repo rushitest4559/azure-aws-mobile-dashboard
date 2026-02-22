@@ -8,9 +8,10 @@ from methods.storage import (
     get_azure_storage_details
 )
 
+# Initialize the Function App
 app = func.FunctionApp()
 
-@app.route(route="aws/list", methods=["GET"])
+@app.route(route="/aws/list", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def list_aws(req: func.HttpRequest) -> func.HttpResponse:
     """List all AWS S3 buckets with metadata."""
     data = get_s3_buckets_with_metadata()
@@ -19,7 +20,7 @@ def list_aws(req: func.HttpRequest) -> func.HttpResponse:
         mimetype="application/json"
     )
 
-@app.route(route="azure/list", methods=["GET"])
+@app.route(route="/azure/list", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def list_azure(req: func.HttpRequest) -> func.HttpResponse:
     """List Azure storage accounts for configured subscription."""
     sub_id = os.environ.get('AZURE_SUBSCRIPTION_ID')
@@ -35,7 +36,7 @@ def list_azure(req: func.HttpRequest) -> func.HttpResponse:
         mimetype="application/json"
     )
 
-@app.route(route="aws/details", methods=["GET"])
+@app.route(route="/aws/details", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def aws_details(req: func.HttpRequest) -> func.HttpResponse:
     """Get details for specific AWS S3 bucket."""
     bucket_name = req.params.get('bucket_name')
@@ -51,7 +52,7 @@ def aws_details(req: func.HttpRequest) -> func.HttpResponse:
         mimetype="application/json"
     )
 
-@app.route(route="azure/details", methods=["GET"])
+@app.route(route="/azure/details", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def azure_details(req: func.HttpRequest) -> func.HttpResponse:
     """Get details for specific Azure storage account."""
     sub_id = os.environ.get('AZURE_SUBSCRIPTION_ID')

@@ -1,28 +1,52 @@
 import { InteractionRequiredAuthError } from "@azure/msal-browser";
-import { msalInstance } from "./main"; // You'll need to export msalInstance from main.jsx
+import { msalInstance } from "./main"; 
 import { apiConfig, loginRequest } from "./authConfig";
 
 export const getAccessToken = async () => {
+    let account = msalInstance.getActiveAccount();
+
+    // 1. Fallback: If active account is null, try to retrieve from cache
+    if (!account) {
+        const accounts = msalInstance.getAllAccounts();
+        if (accounts.length > 0) {
+            msalInstance.setActiveAccount(accounts[0]);
+            account = accounts[0];
+        }
+    }
+
+    // 2. If still no account, mobile session is lost -> trigger login
+    if (!account) {
+        console.warn("No active account found, redirecting to login...");
+        await msalInstance.loginRedirect(loginRequest);
+        return null; 
+    }
+
     try {
-        // 1. Try to get the token silently (from cache)
+        // 3. Try silent token acquisition
         const response = await msalInstance.acquireTokenSilent({
             scopes: apiConfig.scopes,
-            account: msalInstance.getActiveAccount()
+            account: account
         });
         return response.accessToken;
     } catch (error) {
-        // 2. If silent fails (e.g., token expired), force a re-login
+        // 4. Handle token expiration or interaction requirements
         if (error instanceof InteractionRequiredAuthError) {
-            msalInstance.acquireTokenRedirect({ scopes: apiConfig.scopes });
+            console.log("Interaction required, redirecting...");
+            await msalInstance.acquireTokenRedirect({ 
+                scopes: apiConfig.scopes,
+                account: account 
+            });
         }
         throw error;
     }
 };
 
-// Example of how to use it with fetch
 export const secureFetch = async (url, options = {}) => {
     const token = await getAccessToken();
     
+    // If redirecting, token will be null; stop execution
+    if (!token) return;
+
     const headers = {
         ...options.headers,
         Authorization: `Bearer ${token}`,
