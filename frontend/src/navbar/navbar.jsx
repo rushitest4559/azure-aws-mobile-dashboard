@@ -15,10 +15,15 @@ export default function Navbar() {
   const isActive = (path) => location.pathname === path;
 
   const handleLogout = () => {
-    sessionStorage.clear();
-    localStorage.clear();
-    instance.logoutRedirect();
+  // Optional: Define where to go after logout
+  const logoutRequest = {
+    postLogoutRedirectUri: window.location.origin, // Returns user to home page
+    mainWindowRedirectUri: window.location.origin
   };
+
+  // MSAL's logout handles clearing its own storage/cookies automatically
+  instance.logoutRedirect(logoutRequest);
+};
 
   return (
     <nav className="fixed top-0 w-full z-50 bg-white/70 backdrop-blur-xl border-b border-gray-100">
