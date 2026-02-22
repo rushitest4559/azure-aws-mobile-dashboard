@@ -1,12 +1,10 @@
 import boto3
 import os
 import logging
-import azure.identity
-import azure.mgmt.storage
 from botocore.exceptions import ClientError
 from typing import List, Dict, Any
+import azure.identity
 
-# Configure logging to show in Azure Log Stream
 logger = logging.getLogger(__name__)
 
 def get_aws_s3_client():
@@ -21,13 +19,11 @@ def get_aws_s3_client():
         raise ValueError("Missing critical AWS/Azure environment variables")
 
     try:
-        # 1. Get Azure Token
         logger.info("OIDC Bridge: Requesting token from Azure Identity...")
         azure_cred = azure.identity.ManagedIdentityCredential(client_id=client_id)
         azure_token = azure_cred.get_token("api://AzureADTokenExchange")
         logger.info("OIDC Bridge: Azure token acquired successfully.")
 
-        # 2. Assume Role with AWS
         logger.info("OIDC Bridge: Calling AWS STS AssumeRoleWithWebIdentity...")
         sts_client = boto3.client('sts', region_name='us-east-1')
         assumed_role = sts_client.assume_role_with_web_identity(
@@ -37,7 +33,6 @@ def get_aws_s3_client():
         )
         logger.info("OIDC Bridge: AWS credentials assumed successfully.")
 
-        # 3. Create S3 Client
         creds = assumed_role['Credentials']
         return boto3.client(
             's3',
@@ -82,24 +77,3 @@ def get_s3_buckets_with_metadata() -> List[Dict[str, str]]:
     except Exception as e:
         logger.error(f"Error listing S3 buckets: {str(e)}")
         raise
-
-# Azure logic remains largely same but with basic entry logging
-def get_azure_storage_accounts_with_metadata(subscription_id: str) -> List[Dict[str, Any]]:
-    logger.info(f"Fetching Azure Storage accounts for sub: {subscription_id}")
-    credential = azure.identity.DefaultAzureCredential()
-    storage_client = azure.mgmt.storage.StorageManagementClient(credential, subscription_id)
-    
-    accounts = []
-    for account in storage_client.storage_accounts.list():
-        parts = account.id.split('/')
-        resource_group = parts[4] if len(parts) > 4 else 'unknown'
-        accounts.append({
-            'name': account.name,
-            'location': account.location,
-            'sku': account.sku.name,
-            'kind': account.kind,
-            'resource_group': resource_group
-        })
-    return accounts
-
-# ... [rest of the Azure details functions remain same]
