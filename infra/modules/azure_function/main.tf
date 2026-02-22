@@ -1,6 +1,11 @@
-resource "azurerm_storage_account" "func_storage" {
-  name = substr(replace("st${var.function_app_name}${random_string.suffix.result}", "-", ""), 0, 24)
+resource "random_string" "suffix" {
+  length  = 8
+  special = false
+  upper   = false
+}
 
+resource "azurerm_storage_account" "func_storage" {
+  name                     = substr(replace("st${var.function_app_name}${random_string.suffix.result}", "-", ""), 0, 24)
   resource_group_name      = var.resource_group_name
   location                 = var.location
   account_tier             = "Standard"
@@ -28,15 +33,14 @@ resource "azurerm_service_plan" "func_plan" {
   resource_group_name = var.resource_group_name
   location            = var.location
   os_type             = "Linux"
-  sku_name            = "Y1" # Consumption plan
+  sku_name            = "Y1" 
 }
 
 data "archive_file" "python_zip" {
   type        = "zip"
   source_dir  = "${path.module}/../../../backend"
   output_path = "${path.module}/backend.zip"
-
-  excludes = ["__pycache__", ".env", ".venv", ".git", "local.settings.json"]
+  excludes    = ["__pycache__", ".env", ".venv", ".git", "local.settings.json"]
 }
 
 resource "azurerm_linux_function_app" "function_app" {
@@ -52,26 +56,23 @@ resource "azurerm_linux_function_app" "function_app" {
     identity_ids = [var.managed_identity_id]
   }
 
-  # --- CRITICAL AUTH CONFIGURATION ---
+  # --- AUTH CONFIGURATION ---
+  # Ensures tokens from your Frontend MSAL are accepted
   auth_settings_v2 {
     auth_enabled           = true
     default_provider       = "AzureActiveDirectory"
-    unauthenticated_action = "Return401" # Correct for API calls
+    unauthenticated_action = "Return401"
 
     active_directory_v2 {
-      # Points to your App Registration Client ID
-      client_id = var.azured_app_client_id
-
-      # Dynamically build the endpoint using your tenant variable
+      client_id            = var.azured_app_client_id
       tenant_auth_endpoint = "https://login.microsoftonline.com/5f4096ce-7b27-4e3e-8fe4-ce7c1c051ae3/v2.0/"
 
-      # These audiences MUST match the 'aud' claim in the JWT token sent by MSAL
+      # Crucial: Must match exactly what is in your authConfig.js scopes
       allowed_audiences = [
         var.azured_app_client_id,
         "api://${var.azured_app_client_id}"
       ]
       
-      # Allows the app to call itself (Frontend -> Backend on same ID)
       allowed_applications = [var.azured_app_client_id]
     }
 
@@ -85,29 +86,26 @@ resource "azurerm_linux_function_app" "function_app" {
       python_version = "3.11"
     }
     cors {
-      # Ensure your Vercel URL does NOT have a trailing slash
-      allowed_origins     = ["https://staticweb-project.vercel.app"]
+      # No trailing slashes
+      allowed_origins     = ["https://staticweb-project.vercel.app", "http://localhost:5173"]
       support_credentials = true
     }
   }
 
   app_settings = {
-    AZURE_CLIENT_ID                        = var.managed_identity_client_id
-    _DEPLOY_TAG                            = data.archive_file.python_zip.output_base64sha256
-    FUNCTIONS_WORKER_RUNTIME               = "python"
-    AZURE_SUBSCRIPTION_ID                  = var.subscription_id
-    APPINSIGHTS_INSTRUMENTATIONKEY         = azurerm_application_insights.appinsights.instrumentation_key
-    AWS_ROLE_ARN                           = var.aws_role_arn
-    SCM_DO_BUILD_DURING_DEPLOYMENT         = "true"
-    "AzureFunctionsJobHost__functionTimeout" = "00:02:00"
-    ENABLE_ORYX_BUILD                      = "true"
+    # This Client ID is for the Managed Identity, used for the AWS OIDC bridge
+    AZURE_CLIENT_ID                = var.managed_identity_client_id
+    AZURE_SUBSCRIPTION_ID          = var.subscription_id
+    AWS_ROLE_ARN                   = var.aws_role_arn
+    
+    FUNCTIONS_WORKER_RUNTIME       = "python"
+    APPINSIGHTS_INSTRUMENTATIONKEY = azurerm_application_insights.appinsights.instrumentation_key
+    SCM_DO_BUILD_DURING_DEPLOYMENT = "true"
+    ENABLE_ORYX_BUILD              = "true"
+    
+    # Deployment tracking
+    _DEPLOY_TAG                    = data.archive_file.python_zip.output_base64sha256
   }
 
   zip_deploy_file = data.archive_file.python_zip.output_path
-}
-
-resource "random_string" "suffix" {
-  length  = 8
-  special = false
-  upper   = false
 }
