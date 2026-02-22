@@ -2,7 +2,6 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { MsalAuthenticationTemplate } from "@azure/msal-react";
 import { InteractionType } from "@azure/msal-browser";
 
-// Import from your central config
 import { loginRequest } from "./authConfig";
 
 import Navbar from "./navbar/navbar";
@@ -13,27 +12,32 @@ import S3Details from "./pages/S3Details";
 
 function App() {
   return (
-    <MsalAuthenticationTemplate 
-      interactionType={InteractionType.Redirect} 
+    <MsalAuthenticationTemplate
+      interactionType={InteractionType.Redirect}
       authenticationRequest={loginRequest}
-      errorComponent={({error}) => (
-        <div className="p-4 text-red-500">
-          Authentication Error: {error?.message}. Please refresh the page.
-        </div>
-      )}
+      errorComponent={({ error }) => {
+        if (error?.errorCode === "no_token_request_cache_error") {
+          return <div className="p-4">Loading...</div>;
+        }
+        return (
+          <div className="p-4 text-red-500">
+            Authentication Error: {error?.message}
+          </div>
+        );
+      }}
       loadingComponent={() => <div className="p-4">Loading session...</div>}
     >
-      <div className="pt-14">
-        <Router>
-          <Navbar />
+      <Router>
+        <Navbar />
+        <div className="pt-14">
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/storage" element={<StorageDashboard />} />
             <Route path="/azure/details/:accountName" element={<AzureDetails />} />
             <Route path="/aws/details/:bucketName" element={<S3Details />} />
           </Routes>
-        </Router>
-      </div>
+        </div>
+      </Router>
     </MsalAuthenticationTemplate>
   );
 }
