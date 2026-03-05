@@ -3,41 +3,39 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { FaDatabase, FaSync, FaExclamationTriangle, FaRobot, FaSpinner, FaCube } from 'react-icons/fa';
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { secureFetch } from '../api'; 
+import { secureFetch } from '../api';
+
+/*
+ * EksList — Cloud Control
+ * Layout: NO secondary sticky header — navbar handles top chrome.
+ * Page title + sync live inside the content flow, no z-index conflicts.
+ * Design tokens: identical to Navbar + Home (Syne · Outfit · --ink etc.)
+ */
 
 const EksList = () => {
-  const navigate = useNavigate();
-  const [showSummary, setShowSummary] = useState(false);
+  const navigate  = useNavigate();
+  const [showSummary,  setShowSummary]  = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [aiSummary, setAiSummary] = useState(null);
+  const [aiSummary,    setAiSummary]    = useState(null);
 
-  // 🔄 Load cached data from localStorage on mount
+  // ── Logic untouched ──────────────────────────────────────────────
   const getCachedData = useCallback(() => {
     try {
       const cached = localStorage.getItem('eksClustersCache');
       return cached ? JSON.parse(cached) : null;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   }, []);
 
-  // 💾 Save data to localStorage
   const saveToCache = useCallback((data) => {
     try {
-      localStorage.setItem('eksClustersCache', JSON.stringify({
-        data,
-        timestamp: Date.now()
-      }));
-    } catch (error) {
-      console.error('Failed to save to localStorage:', error);
-    }
+      localStorage.setItem('eksClustersCache', JSON.stringify({ data, timestamp: Date.now() }));
+    } catch (error) { console.error('Failed to save to localStorage:', error); }
   }, []);
 
-  // Restore scroll position
   useEffect(() => {
-    const savedScrollPosition = sessionStorage.getItem('eksListScrollPosition');
-    if (savedScrollPosition) {
-      window.scrollTo(0, parseInt(savedScrollPosition));
+    const saved = sessionStorage.getItem('eksListScrollPosition');
+    if (saved) {
+      window.scrollTo(0, parseInt(saved));
       sessionStorage.removeItem('eksListScrollPosition');
     }
   }, []);
@@ -47,45 +45,33 @@ const EksList = () => {
     navigate(`/aws/eks/details/${name}?region=${region}`);
   };
 
-  // 🚫 DISABLE AUTO-FETCH - Only manual sync
   const { data: clusters = [], refetch, isFetching, error, isError } = useQuery({
     queryKey: ['eksClusters'],
     queryFn: async () => {
       const res = await secureFetch(`${import.meta.env.VITE_API_URL}/aws/eks/list`);
-
-      if (!res.ok) {
-        throw new Error(`Failed to fetch EKS clusters: ${res.statusText}`);
-      }
-
+      if (!res.ok) throw new Error(`Failed to fetch EKS clusters: ${res.statusText}`);
       const data = await res.json();
-      saveToCache(data); // 💾 Auto-save on successful fetch
+      saveToCache(data);
       return data;
     },
-    enabled: false, // 🚫 NEVER auto-fetch
-    staleTime: Infinity, // Never consider stale
-    cacheTime: Infinity, // Never GC from cache
-    retry: false, // No retries
+    enabled:   false,
+    staleTime: Infinity,
+    cacheTime: Infinity,
+    retry:     false,
   });
 
-  // 🎯 Load cached data immediately for instant UI
-  const cachedData = getCachedData();
+  const cachedData      = getCachedData();
   const displayClusters = cachedData?.data || [];
 
   const generateAISummary = async () => {
     setIsGenerating(true);
     setShowSummary(true);
-
     try {
       const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-      const clusterData = displayClusters.map(cluster => ({
-        name: cluster.name,
-        region: cluster.region,
-        status: cluster.status,
-        endpoint: cluster.endpoint,
-        role_arn: cluster.role_arn,
-        version: cluster.version,
+      const clusterData = displayClusters.map(c => ({
+        name: c.name, region: c.region, status: c.status,
+        endpoint: c.endpoint, role_arn: c.role_arn, version: c.version,
       }));
-
       const prompt = `Analyze these EKS clusters and provide exactly 2-3 key insights (each insight should be one concise sentence under 20 words):
 
 EKS Cluster Data:
@@ -102,11 +88,9 @@ Format your response as:
 2. Second insight here
 3. Third insight here`;
 
-      const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+      const model  = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
       const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-
+      const text   = result.response.text();
       console.log('Gemini response:', text);
 
       const insights = text
@@ -115,207 +99,477 @@ Format your response as:
         .map(line => line.replace(/^\d+[\.)]\s*/, '').trim())
         .filter(line => line.length > 0);
 
-      if (insights.length > 0) {
-        setAiSummary(insights.slice(0, 3));
-      } else {
-        setAiSummary([
-          text.trim() || `${displayClusters.length} EKS clusters analyzed successfully`,
-          'Review clusters with outdated Kubernetes versions',
-          'Consider consolidating regions for better management'
-        ]);
-      }
-
-    } catch (error) {
-      console.error('AI Summary generation failed:', error);
+      setAiSummary(insights.length > 0 ? insights.slice(0, 3) : [
+        text.trim() || `${displayClusters.length} EKS clusters analyzed successfully`,
+        'Review clusters with outdated Kubernetes versions',
+        'Consider consolidating regions for better management',
+      ]);
+    } catch (err) {
+      console.error('AI Summary generation failed:', err);
       const activeCount = displayClusters.filter(c => c.status?.toLowerCase() === 'active').length;
-      const totalClusters = displayClusters.length;
-
       setAiSummary([
-        `${activeCount}/${totalClusters} clusters are active`,
+        `${activeCount}/${displayClusters.length} clusters are active`,
         `Clusters spread across ${new Set(displayClusters.map(c => c.region)).size} regions`,
-        'Review endpoint access and security configurations'
+        'Review endpoint access and security configurations',
       ]);
     } finally {
       setIsGenerating(false);
     }
   };
+  // ── End logic ────────────────────────────────────────────────────
+
+  const statusCfg = (status) => {
+    const s = status?.toLowerCase();
+    if (s === 'active')   return { color: '#00C875', bg: 'rgba(0,200,117,0.1)',  border: 'rgba(0,200,117,0.22)'  };
+    if (s === 'creating') return { color: '#0066FF', bg: 'rgba(0,102,255,0.1)',  border: 'rgba(0,102,255,0.22)'  };
+    return                       { color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.22)' };
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-xl border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 sm:h-20">
-            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
-              EKS Clusters {displayClusters.length > 0 && (
-                <span className="text-sm text-gray-500 font-normal ml-2">
-                  ({displayClusters.length})
-                </span>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+
+        :root {
+          --font-display: 'Figtree', -apple-system, sans-serif;
+          --font-body:    'Plus Jakarta Sans', -apple-system, sans-serif;
+          --ink:      #0A0F1E;
+          --ink-soft: #1E2A3B;
+          --surface:  #F5F7FA;
+          --card:     #FFFFFF;
+          --border:   rgba(10,15,30,0.08);
+          --accent:   #0066FF;
+          --green:    #00C875;
+          --muted:    #8A95A8;
+          --s-card:   0 2px 12px rgba(10,15,30,0.06);
+          --s-lift:   0 8px 28px rgba(10,15,30,0.12);
+        }
+
+        .ek, .ek * {
+          font-family: var(--font-body);
+          box-sizing: border-box;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        @keyframes ek-up {
+          from { opacity:0; transform:translateY(14px); }
+          to   { opacity:1; transform:translateY(0);    }
+        }
+        .ek-enter { animation: ek-up 0.44s cubic-bezier(0.22,1,0.36,1) both; }
+
+        @keyframes ek-card {
+          from { opacity:0; transform:translateY(16px) scale(0.99); }
+          to   { opacity:1; transform:translateY(0)    scale(1);    }
+        }
+        .ek-card { animation: ek-card 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+
+        .ek-press:active { transform:scale(0.97); transition:transform 0.1s ease; }
+
+        @keyframes ek-spin { to { transform:rotate(360deg); } }
+        .ek-spin { animation: ek-spin 0.75s linear infinite; }
+
+        @keyframes ek-pulse {
+          0%,100% { opacity:1;   transform:scale(1);    }
+          50%      { opacity:0.4; transform:scale(0.82); }
+        }
+        .ek-pulse { animation: ek-pulse 2s ease-in-out infinite; }
+
+        @keyframes ek-rise {
+          from { opacity:0; transform:translateY(20px); }
+          to   { opacity:1; transform:translateY(0);    }
+        }
+        .ek-rise { animation: ek-rise 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+
+        @keyframes ek-insight {
+          from { opacity:0; transform:translateX(-8px); }
+          to   { opacity:1; transform:translateX(0);    }
+        }
+        .ek-insight { animation: ek-insight 0.36s cubic-bezier(0.22,1,0.36,1) both; }
+
+        @keyframes ek-shimmer {
+          0%   { background-position:-200% center; }
+          100% { background-position: 200% center; }
+        }
+        .ek-shimmer-bar {
+          background: linear-gradient(90deg, rgba(10,15,30,0.05) 25%, rgba(10,15,30,0.1) 50%, rgba(10,15,30,0.05) 75%);
+          background-size: 200% 100%;
+          animation: ek-shimmer 1.6s ease-in-out infinite;
+          border-radius: 6px;
+        }
+
+        @keyframes ek-orb {
+          0%,100% { transform:translate(-50%,-50%) scale(1);   opacity:0.45; }
+          50%      { transform:translate(-50%,-50%) scale(1.1); opacity:0.65; }
+        }
+        .ek-orb { animation: ek-orb 7s ease-in-out infinite; }
+      `}</style>
+
+      {/* ── Page — starts right below navbar (paddingTop:56) ─────────── */}
+      <div className="ek" style={{
+        minHeight: "100vh",
+        background: "var(--surface)",
+        paddingTop: 56,           /* exact navbar height — no overlap, no gap */
+        overflowX: "hidden",
+      }}>
+        <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px 56px" }}>
+
+          {/* ── Page header — inline, NOT sticky ──────────────────── */}
+          <div className="ek-enter" style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            marginBottom: 22,
+            animationDelay: "0s",
+          }}>
+            <div>
+              <h1 style={{
+                fontFamily: "var(--font-display)",
+                fontSize: 20, fontWeight: 800,
+                color: "var(--ink)", letterSpacing: "-0.7px",
+                margin: 0, lineHeight: 1.2,
+              }}>EKS Clusters</h1>
+              {displayClusters.length > 0 && (
+                <div style={{
+                  fontFamily: "var(--font-body)",
+                  fontSize: 11.5, fontWeight: 500,
+                  color: "var(--muted)", marginTop: 3,
+                  letterSpacing: "0.1px",
+                }}>
+                  {displayClusters.length} cluster{displayClusters.length !== 1 ? 's' : ''} · AWS
+                </div>
               )}
-            </h1>
+            </div>
+
+            {/* Sync */}
             <button
               onClick={() => refetch()}
               disabled={isFetching}
-              className="flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-full transition-all font-medium text-sm shadow-sm active:scale-95 disabled:active:scale-100"
-              title="Sync from AWS (updates cache)"
+              className="ek-press"
+              style={{
+                display: "flex", alignItems: "center", gap: 7,
+                padding: "9px 18px",
+                background: isFetching ? "rgba(0,200,117,0.08)" : "var(--ink)",
+                border: isFetching ? "1.5px solid rgba(0,200,117,0.3)" : "1.5px solid transparent",
+                borderRadius: 99,
+                cursor: isFetching ? "default" : "pointer",
+                boxShadow: isFetching ? "none" : "0 2px 12px rgba(10,15,30,0.22)",
+                transition: "all 0.22s ease",
+                flexShrink: 0,
+              }}
             >
-              <FaSync className={`text-xs ${isFetching ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">{isFetching ? 'Syncing...' : 'Refresh'}</span>
-              <span className="sm:hidden">{isFetching ? 'Syncing' : 'Sync'}</span>
+              <FaSync
+                className={isFetching ? "ek-spin" : ""}
+                style={{ fontSize: 11, color: isFetching ? "var(--green)" : "#fff" }}
+              />
+              <span style={{
+                fontFamily: "var(--font-body)",
+                fontSize: 13, fontWeight: 600,
+                color: isFetching ? "var(--green)" : "#fff",
+                letterSpacing: "0.1px",
+              }}>
+                {isFetching ? "Syncing" : "Sync"}
+              </span>
             </button>
           </div>
+
+          {/* ── AI Insights ───────────────────────────────────────── */}
+          {displayClusters.length > 0 && (
+            <div className="ek-enter" style={{ marginBottom: 18, animationDelay: "0.07s" }}>
+              {!showSummary ? (
+                /* Trigger */
+                <button
+                  onClick={generateAISummary}
+                  disabled={isGenerating}
+                  className="ek-press"
+                  style={{
+                    width: "100%",
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "13px 16px",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 16,
+                    cursor: "pointer",
+                    boxShadow: "var(--s-card)",
+                    textAlign: "left",
+                    transition: "box-shadow 0.2s, border-color 0.2s",
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.boxShadow    = "var(--s-lift)";
+                    e.currentTarget.style.borderColor  = "rgba(0,200,117,0.28)";
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.boxShadow   = "var(--s-card)";
+                    e.currentTarget.style.borderColor = "var(--border)";
+                  }}
+                >
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                    background: "rgba(0,200,117,0.1)",
+                    border: "1px solid rgba(0,200,117,0.2)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <FaRobot style={{ fontSize: 14, color: "var(--green)" }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontFamily: "var(--font-display)",
+                      fontSize: 14, fontWeight: 700,
+                      color: "var(--ink)", letterSpacing: "-0.2px",
+                    }}>AI Insights</div>
+                    <div style={{
+                      fontFamily: "var(--font-body)",
+                      fontSize: 12, color: "var(--muted)", marginTop: 1,
+                    }}>Analyze {displayClusters.length} cluster{displayClusters.length !== 1 ? 's' : ''} with Gemini</div>
+                  </div>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                       stroke="var(--muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </button>
+
+              ) : (
+                /* Panel */
+                <div className="ek-rise" style={{
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 16,
+                  boxShadow: "var(--s-lift)",
+                  overflow: "hidden",
+                }}>
+                  {/* Header */}
+                  <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "13px 15px",
+                    borderBottom: "1px solid var(--border)",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                      <div style={{
+                        width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                        background: "rgba(0,200,117,0.1)",
+                        border: "1px solid rgba(0,200,117,0.2)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        {isGenerating
+                          ? <FaSpinner className="ek-spin" style={{ fontSize: 11, color: "var(--green)" }} />
+                          : <FaRobot style={{ fontSize: 11, color: "var(--green)" }} />
+                        }
+                      </div>
+                      <div>
+                        <div style={{
+                          fontFamily: "var(--font-display)",
+                          fontSize: 13, fontWeight: 700,
+                          color: "var(--ink)", letterSpacing: "-0.2px",
+                        }}>AI Insights</div>
+                        <div style={{
+                          fontFamily: "var(--font-body)",
+                          fontSize: 10.5, color: "var(--muted)",
+                        }}>{isGenerating ? "Analyzing…" : "Powered by Gemini"}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => { setShowSummary(false); setAiSummary(null); }}
+                      style={{
+                        background: "var(--surface)", border: "1px solid var(--border)",
+                        borderRadius: 8, padding: "4px 10px", cursor: "pointer",
+                        fontFamily: "var(--font-body)",
+                        fontSize: 11, fontWeight: 600, color: "var(--muted)",
+                      }}
+                    >Done</button>
+                  </div>
+
+                  {/* Body */}
+                  <div style={{ padding: "14px 15px" }}>
+                    {isGenerating ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {[90, 72, 55].map((w, i) => (
+                          <div key={i} className="ek-shimmer-bar" style={{ height: 13, width: `${w}%` }} />
+                        ))}
+                      </div>
+                    ) : aiSummary ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+                        {aiSummary.map((insight, i) => (
+                          <div key={i} className="ek-insight"
+                               style={{ display: "flex", alignItems: "flex-start", gap: 11, animationDelay: `${i * 0.09}s` }}>
+                            <div style={{
+                              width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
+                              background: "rgba(0,200,117,0.1)",
+                              border: "1px solid rgba(0,200,117,0.2)",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              marginTop: 1,
+                            }}>
+                              <span style={{
+                                fontFamily: "var(--font-display)",
+                                fontSize: 9, fontWeight: 700, color: "var(--green)",
+                              }}>{i + 1}</span>
+                            </div>
+                            <p style={{
+                              fontFamily: "var(--font-body)",
+                              fontSize: 13, fontWeight: 400,
+                              color: "var(--ink-soft)", lineHeight: 1.6, margin: 0, flex: 1,
+                            }}>{insight}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Empty state ───────────────────────────────────────── */}
+          {!isFetching && displayClusters.length === 0 ? (
+            <div className="ek-enter" style={{
+              display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center",
+              padding: "72px 24px", textAlign: "center",
+              position: "relative", animationDelay: "0.1s",
+            }}>
+              <div className="ek-orb" style={{
+                position: "absolute", top: "50%", left: "50%",
+                width: 260, height: 160,
+                background: "radial-gradient(ellipse, rgba(0,102,255,0.08) 0%, transparent 70%)",
+                pointerEvents: "none",
+              }} />
+              <div style={{
+                width: 56, height: 56, borderRadius: 16,
+                background: "var(--card)", border: "1px solid var(--border)",
+                boxShadow: "var(--s-card)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                marginBottom: 16, position: "relative",
+              }}>
+                <FaCube style={{ fontSize: 20, color: "var(--muted)" }} />
+              </div>
+              <div style={{
+                fontFamily: "var(--font-display)",
+                fontSize: 16, fontWeight: 700,
+                color: "var(--ink)", letterSpacing: "-0.3px", marginBottom: 7,
+              }}>No clusters yet</div>
+              <div style={{
+                fontFamily: "var(--font-body)",
+                fontSize: 13, color: "var(--muted)",
+                lineHeight: 1.6, maxWidth: 220, marginBottom: 5,
+              }}>Hit Sync to pull your AWS EKS clusters</div>
+              <div style={{
+                fontFamily: "var(--font-body)",
+                fontSize: 11, color: "var(--muted)", opacity: 0.55,
+              }}>Loads instantly from cache after first sync</div>
+            </div>
+
+          ) : (
+            /* ── Cluster cards ──────────────────────────────────── */
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {displayClusters.map((cluster, i) => {
+                const st = statusCfg(cluster.status);
+                return (
+                  <div
+                    key={cluster.name}
+                    onClick={() => handleNavigate(cluster.name, cluster.region)}
+                    className="ek-card ek-press"
+                    style={{
+                      animationDelay: `${0.1 + i * 0.05}s`,
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 16,
+                      boxShadow: "var(--s-card)",
+                      overflow: "hidden",
+                      cursor: "pointer",
+                      transition: "box-shadow 0.2s, border-color 0.2s",
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.boxShadow   = "var(--s-lift)";
+                      e.currentTarget.style.borderColor = "rgba(10,15,30,0.13)";
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.boxShadow   = "var(--s-card)";
+                      e.currentTarget.style.borderColor = "var(--border)";
+                    }}
+                  >
+                    {/* Main content */}
+                    <div style={{ padding: "14px 15px 12px", display: "flex", alignItems: "flex-start", gap: 12 }}>
+
+                      {/* Glowing left bar */}
+                      <div style={{
+                        width: 3, alignSelf: "stretch", minHeight: 36,
+                        borderRadius: 2, flexShrink: 0,
+                        background: st.color,
+                        boxShadow: `0 0 8px ${st.color}88`,
+                      }} />
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {/* Name + status row */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 5 }}>
+                          <div style={{
+                            fontFamily: "var(--font-display)",
+                            fontSize: 14.5, fontWeight: 700,
+                            color: "var(--ink)", letterSpacing: "-0.3px",
+                            overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
+                          }}>{cluster.name}</div>
+
+                          <div style={{
+                            display: "flex", alignItems: "center", gap: 5,
+                            padding: "3px 9px",
+                            background: st.bg, border: `1px solid ${st.border}`,
+                            borderRadius: 99, flexShrink: 0,
+                          }}>
+                            {cluster.status?.toLowerCase() === 'active' && (
+                              <div className="ek-pulse" style={{
+                                width: 5, height: 5, borderRadius: "50%",
+                                background: st.color, flexShrink: 0,
+                              }} />
+                            )}
+                            <span style={{
+                              fontFamily: "var(--font-body)",
+                              fontSize: 11, fontWeight: 600,
+                              color: st.color, letterSpacing: "0.1px",
+                            }}>{cluster.status || 'Unknown'}</span>
+                          </div>
+                        </div>
+
+                        {/* Region */}
+                        <div style={{
+                          fontFamily: "var(--font-body)",
+                          fontSize: 12.5, color: "var(--muted)",
+                        }}>{cluster.region}</div>
+                      </div>
+                    </div>
+
+                    {/* Footer row */}
+                    <div style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "9px 15px",
+                      borderTop: "1px solid var(--border)",
+                      background: "rgba(10,15,30,0.012)",
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{
+                          fontFamily: "var(--font-body)",
+                          fontSize: 10.5, fontWeight: 600,
+                          color: "var(--muted)", letterSpacing: "0.7px", textTransform: "uppercase",
+                        }}>K8s</span>
+                        <span style={{
+                          fontFamily: "var(--font-display)",
+                          fontSize: 12, fontWeight: 600, color: "var(--ink-soft)",
+                        }}>{cluster.version || '—'}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <span style={{
+                          fontFamily: "var(--font-body)",
+                          fontSize: 12, fontWeight: 600,
+                          color: "var(--accent)",
+                        }}>Details</span>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                             stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M9 18l6-6-6-6"/>
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Show cached data count for AI insights */}
-        {displayClusters.length > 0 && (
-          <div className="mb-6">
-            {!showSummary ? (
-              <button
-                onClick={generateAISummary}
-                disabled={isGenerating}
-                className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:from-emerald-300 disabled:to-teal-300 text-white rounded-2xl p-4 flex items-center justify-center gap-3 transition-all shadow-sm active:scale-[0.99]"
-              >
-                <FaRobot className="text-lg" />
-                <span className="font-medium">
-                  Generate AI Insights ({displayClusters.length} clusters)
-                </span>
-              </button>
-            ) : (
-              // AI Summary component
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <FaRobot className="text-emerald-600" />
-                    <h2 className="text-sm font-semibold text-gray-900">AI Insights</h2>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setShowSummary(false);
-                      setAiSummary(null);
-                    }}
-                    className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
-                  >
-                    Close
-                  </button>
-                </div>
-                <div className="p-4">
-                  {isGenerating ? (
-                    <div className="flex flex-col items-center justify-center py-8">
-                      <FaSpinner className="text-3xl text-emerald-600 animate-spin mb-3" />
-                      <p className="text-sm text-gray-500">Analyzing your EKS clusters...</p>
-                    </div>
-                  ) : aiSummary ? (
-                    <div className="space-y-3">
-                      {aiSummary.map((insight, index) => (
-                        <div key={index} className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <span className="text-xs font-semibold text-emerald-600">
-                              {index + 1}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-700 flex-1">{insight}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* No cached data */}
-        {!isFetching && displayClusters.length === 0 ? (
-          <div className="text-center py-16 sm:py-20">
-            <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-full mb-4">
-              <FaCube className="text-2xl sm:text-3xl text-gray-400" />
-            </div>
-            <p className="text-base sm:text-lg font-medium text-gray-900 mb-1">No EKS clusters</p>
-            <p className="text-sm text-gray-500 mb-4">Press sync to load your AWS EKS clusters</p>
-            <div className="text-xs text-gray-400">
-              Data loads instantly from cache after first sync
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* Desktop Table */}
-            <div className="hidden lg:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Cluster Name</th>
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Region</th>
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Version</th>
-                    <th className="text-right px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {displayClusters.map(cluster => (
-                    <tr key={cluster.name} onClick={() => handleNavigate(cluster.name, cluster.region)} className="hover:bg-emerald-50/50 cursor-pointer transition-colors">
-                      <td className="px-6 py-4 font-medium text-gray-900">{cluster.name}</td>
-                      <td className="px-6 py-4 text-gray-600">{cluster.region}</td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          cluster.status?.toLowerCase() === 'active' ? 'bg-green-100 text-green-800' : 
-                          cluster.status?.toLowerCase() === 'creating' ? 'bg-blue-100 text-blue-800' : 
-                          'bg-orange-100 text-orange-800'
-                        }`}>
-                          {cluster.status || 'Unknown'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-gray-600">{cluster.version || '—'}</td>
-                      <td className="px-6 py-4 text-right">
-                        <button className="text-emerald-600 hover:text-emerald-700 font-medium text-sm">Details</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile Cards */}
-            <div className="lg:hidden space-y-3">
-              {displayClusters.map(cluster => (
-                <div key={cluster.name} onClick={() => handleNavigate(cluster.name, cluster.region)} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden active:scale-[0.98] transition-transform">
-                  <div className="px-4 py-3.5 border-b border-gray-50">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 truncate mb-1">{cluster.name}</h3>
-                        <p className="text-xs text-gray-500 truncate">{cluster.region}</p>
-                      </div>
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ${
-                        cluster.status?.toLowerCase() === 'active' ? 'bg-green-50 text-green-700' : 
-                        cluster.status?.toLowerCase() === 'creating' ? 'bg-blue-50 text-blue-700' : 
-                        'bg-orange-50 text-orange-700'
-                      }`}>
-                        {cluster.status || 'Unknown'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="px-4 py-3 space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">Version</span>
-                      <span className="font-medium text-gray-900">{cluster.version || '—'}</span>
-                    </div>
-                  </div>
-                  <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500">Tap to view details</span>
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+    </>
   );
 };
 

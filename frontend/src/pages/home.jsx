@@ -86,7 +86,7 @@ export default function Home() {
     <>
       {/* ── Global styles (tokens match Navbar exactly) ─────────────── */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap');
 
         :root {
           --ink:       #0A0F1E;
@@ -101,7 +101,7 @@ export default function Home() {
         }
 
         .hp, .hp * {
-          font-family: 'Outfit', -apple-system, sans-serif;
+          font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
           box-sizing: border-box;
         }
 
@@ -220,7 +220,7 @@ export default function Home() {
               }}>
                 <Icon style={{ fontSize: 13, color }} />
                 <span style={{
-                  fontFamily: "'Outfit', sans-serif",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
                   fontSize: 11, fontWeight: 600,
                   color: "var(--muted)", letterSpacing: "0.8px", textTransform: "uppercase"
                 }}>{label}</span>
@@ -230,7 +230,7 @@ export default function Home() {
 
           {/* H1 — Syne at full power */}
           <h1 className="hp-hero" style={{
-            fontFamily: "'Syne', sans-serif",
+            fontFamily: "'Figtree', sans-serif",
             fontSize: "clamp(34px, 8vw, 48px)",
             fontWeight: 800,
             color: "var(--ink)",
@@ -259,7 +259,7 @@ export default function Home() {
 
           {/* Subheading — Outfit Light */}
           <p className="hp-tagline" style={{
-            fontFamily: "'Outfit', sans-serif",
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
             fontSize: 16, fontWeight: 400,
             color: "var(--muted)",
             lineHeight: 1.65,
@@ -285,7 +285,7 @@ export default function Home() {
               background: "var(--green)", flexShrink: 0,
             }} />
             <span style={{
-              fontFamily: "'Outfit', sans-serif",
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
               fontSize: 12, fontWeight: 500,
               color: "var(--green)", letterSpacing: "0.3px"
             }}>All systems live</span>
@@ -294,7 +294,7 @@ export default function Home() {
               background: "var(--muted)", display: "inline-block", margin: "0 2px"
             }} />
             <span style={{
-              fontFamily: "'Outfit', sans-serif",
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
               fontSize: 12, fontWeight: 400,
               color: "var(--muted)"
             }}>6 services connected</span>
@@ -348,7 +348,7 @@ export default function Home() {
                   borderRadius: 99,
                 }}>
                   <span style={{
-                    fontFamily: "'Outfit', sans-serif",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
                     fontSize: 9.5, fontWeight: 600,
                     color: "var(--muted)", letterSpacing: "0.7px",
                     textTransform: "uppercase",
@@ -371,7 +371,7 @@ export default function Home() {
 
                 {/* Name */}
                 <div style={{
-                  fontFamily: "'Syne', sans-serif",
+                  fontFamily: "'Figtree', sans-serif",
                   fontSize: 15, fontWeight: 700,
                   color: "var(--ink)",
                   letterSpacing: "-0.3px",
@@ -381,7 +381,7 @@ export default function Home() {
 
                 {/* Description */}
                 <div style={{
-                  fontFamily: "'Outfit', sans-serif",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
                   fontSize: 12.5, fontWeight: 400,
                   color: "var(--muted)",
                   lineHeight: 1.55,
@@ -395,7 +395,7 @@ export default function Home() {
                   paddingTop: 12,
                 }}>
                   <span style={{
-                    fontFamily: "'Outfit', sans-serif",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
                     fontSize: 12.5, fontWeight: 600,
                     color: svc.color, letterSpacing: "0.1px",
                   }}>Explore</span>
@@ -423,7 +423,7 @@ export default function Home() {
             <FaMicrosoft style={{ fontSize: 15, color: "#0066FF" }} />
           </div>
           <p style={{
-            fontFamily: "'Outfit', sans-serif",
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
             fontSize: 10.5, fontWeight: 600,
             color: "var(--muted)",
             letterSpacing: "1.4px", textTransform: "uppercase",

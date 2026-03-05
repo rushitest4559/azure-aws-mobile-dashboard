@@ -9,10 +9,12 @@ import { useMsal, useAccount } from "@azure/msal-react";
  * ║           CLOUD CONTROL — GLOBAL DESIGN SYSTEM              ║
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  FONTS                                                       ║
- * ║  Display / Brand  →  "Syne"   wght 400–800                  ║
- * ║                       geometric, wide, commanding            ║
- * ║  UI / Body        →  "Outfit" wght 300–700                  ║
- * ║                       modern, airy, perfectly readable       ║
+ * ║  Display / Titles →  "Figtree"            wght 600–900      ║
+ * ║                       tall x-height, tight, vertical        ║
+ * ║                       presence — never sprawls wide         ║
+ * ║  UI / Body        →  "Plus Jakarta Sans"  wght 300–700      ║
+ * ║                       high x-height, crisp at 12px,        ║
+ * ║                       warm and perfectly readable mobile    ║
  * ║                                                              ║
  * ║  COLORS                                                      ║
  * ║  --ink        #0A0F1E   deepest navy-black (NOT pure black)  ║
@@ -66,7 +68,8 @@ export default function Navbar() {
     <>
       {/* ── Design tokens + animations ────────────────────────────────── */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+        /* Typography: Figtree (display/titles) · Plus Jakarta Sans (body/UI) */
 
         :root {
           --ink:       #0A0F1E;
@@ -88,7 +91,7 @@ export default function Navbar() {
         }
 
         .cc, .cc * {
-          font-family: 'Outfit', -apple-system, sans-serif;
+          font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
           box-sizing: border-box;
           -webkit-tap-highlight-color: transparent;
         }
@@ -187,7 +190,7 @@ export default function Navbar() {
               <FaLayerGroup style={{ color: "#fff", fontSize: 12 }} />
             </div>
             <span style={{
-              fontFamily: "'Syne', sans-serif",
+              fontFamily: "'Figtree', sans-serif",
               fontSize: 17, fontWeight: 700,
               color: "var(--ink)", letterSpacing: "-0.5px", lineHeight: 1
             }}>
@@ -216,12 +219,12 @@ export default function Navbar() {
                 flexShrink: 0,
               }}>
                 <span style={{
-                  fontFamily: "'Syne', sans-serif",
+                  fontFamily: "'Figtree', sans-serif",
                   fontSize: 9, fontWeight: 700, color: "#fff", letterSpacing: "0.3px"
                 }}>{initials}</span>
               </div>
               <span style={{
-                fontFamily: "'Outfit', sans-serif",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
                 fontSize: 13, fontWeight: 500, color: "var(--ink-soft)",
                 overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
               }}>{firstName}</span>
@@ -297,19 +300,19 @@ export default function Navbar() {
               boxShadow: "0 4px 14px rgba(10,15,30,0.22)"
             }}>
               <span style={{
-                fontFamily: "'Syne', sans-serif",
+                fontFamily: "'Figtree', sans-serif",
                 fontSize: 15, fontWeight: 700, color: "#fff"
               }}>{initials}</span>
             </div>
 
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
-                fontFamily: "'Syne', sans-serif",
+                fontFamily: "'Figtree', sans-serif",
                 fontSize: 16, fontWeight: 700,
                 color: "var(--ink)", letterSpacing: "-0.3px"
               }}>{firstName}</div>
               <div style={{
-                fontFamily: "'Outfit', sans-serif",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
                 fontSize: 10.5, fontWeight: 500,
                 color: "var(--muted)", letterSpacing: "1.1px",
                 textTransform: "uppercase", marginTop: 2
@@ -330,7 +333,7 @@ export default function Navbar() {
                 boxShadow: "0 0 7px rgba(0,200,117,0.75)"
               }} />
               <span style={{
-                fontFamily: "'Outfit', sans-serif",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
                 fontSize: 11, fontWeight: 600,
                 color: "var(--green)", letterSpacing: "0.1px"
               }}>Live</span>
@@ -339,7 +342,7 @@ export default function Navbar() {
 
           {/* ── Section label ────────────────────────────────────── */}
           <div style={{
-            fontFamily: "'Outfit', sans-serif",
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
             fontSize: 10.5, fontWeight: 600, color: "var(--muted)",
             letterSpacing: "1.3px", textTransform: "uppercase",
             marginBottom: 9, paddingLeft: 3
@@ -385,14 +388,14 @@ export default function Navbar() {
                   {/* Text */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{
-                      fontFamily: "'Outfit', sans-serif",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
                       fontSize: 15, fontWeight: 600,
                       color: active ? "#fff" : "var(--ink)",
                       letterSpacing: "-0.1px",
                       overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis"
                     }}>{link.name}</div>
                     <div style={{
-                      fontFamily: "'Outfit', sans-serif",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
                       fontSize: 10.5, fontWeight: 500,
                       color: active ? "rgba(255,255,255,0.38)" : "var(--muted)",
                       letterSpacing: "0.8px", textTransform: "uppercase", marginTop: 1.5
@@ -468,7 +471,7 @@ export default function Navbar() {
                 <line x1="21" y1="12" x2="9" y2="12" />
               </svg>
               <span style={{
-                fontFamily: "'Syne', sans-serif",
+                fontFamily: "'Figtree', sans-serif",
                 fontSize: 14.5, fontWeight: 600,
                 color: "#FF3B30", letterSpacing: "0.1px"
               }}>Sign Out</span>
