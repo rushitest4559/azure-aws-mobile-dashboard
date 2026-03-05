@@ -30,7 +30,9 @@ variable "managed_identity_id" {
 variable "managed_identity_client_id" {
   
 }
-
+variable "azure_tenant_id" {
+  
+}
 variable "aws_role_arn" {
   description = "AWS IAM Role ARN (from aws-oidc module)"
   type        = string

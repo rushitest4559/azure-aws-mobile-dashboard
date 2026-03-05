@@ -51,61 +51,57 @@ resource "azurerm_linux_function_app" "function_app" {
   storage_account_access_key = azurerm_storage_account.func_storage.primary_access_key
   service_plan_id            = azurerm_service_plan.func_plan.id
 
+  # Connects the User-Assigned Identity
   identity {
     type         = "UserAssigned"
     identity_ids = [var.managed_identity_id]
-  }
-
-  # --- AUTH CONFIGURATION ---
-  # Ensures tokens from your Frontend MSAL are accepted
-  auth_settings_v2 {
-    auth_enabled           = true
-    default_provider       = "AzureActiveDirectory"
-    unauthenticated_action = "Return401"
-
-    active_directory_v2 {
-      client_id            = var.azured_app_client_id
-      tenant_auth_endpoint = "https://login.microsoftonline.com/5f4096ce-7b27-4e3e-8fe4-ce7c1c051ae3/v2.0/"
-
-      # Crucial: Must match exactly what is in your authConfig.js scopes
-      allowed_audiences = [
-        var.azured_app_client_id,
-        "api://mobile-dashboard-api-rushikesh"
-      ]
-      
-      allowed_applications = [var.azured_app_client_id]
-    }
-
-    login {
-      token_store_enabled = true
-    }
   }
 
   site_config {
     application_stack {
       python_version = "3.11"
     }
+
     cors {
-      # No trailing slashes
-      allowed_origins     = ["https://staticweb-project.vercel.app", "http://localhost:5173"]
+      allowed_origins     = ["https://staticweb-project.vercel.app", "http://localhost:5173", "https://portal.azure.com"]
       support_credentials = true
     }
   }
 
   app_settings = {
-    # This Client ID is for the Managed Identity, used for the AWS OIDC bridge
-    AZURE_CLIENT_ID                = var.managed_identity_client_id
-    AZURE_SUBSCRIPTION_ID          = var.subscription_id
-    AWS_ROLE_ARN                   = var.aws_role_arn
+    RUN_ENV = "azure"
+    # CRITICAL: Forces the local agent to recognize the Identity
+    AZURE_CLIENT_ID       = var.managed_identity_client_id
+    AZURE_TENANT_ID       = var.azure_tenant_id
+    AZURE_SUBSCRIPTION_ID = var.subscription_id
     
+    # AWS OIDC Configuration
+    AWS_ROLE_ARN          = var.aws_role_arn
+    
+    # Function Runtime Settings
     FUNCTIONS_WORKER_RUNTIME       = "python"
-    APPINSIGHTS_INSTRUMENTATIONKEY = azurerm_application_insights.appinsights.instrumentation_key
+    APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.appinsights.connection_string
     SCM_DO_BUILD_DURING_DEPLOYMENT = "true"
     ENABLE_ORYX_BUILD              = "true"
     
-    # Deployment tracking
-    _DEPLOY_TAG                    = data.archive_file.python_zip.output_base64sha256
+    _DEPLOY_TAG = data.archive_file.python_zip.output_base64sha256
   }
 
   zip_deploy_file = data.archive_file.python_zip.output_path
+
+  auth_settings_v2 {
+    auth_enabled           = false
+    default_provider       = "AzureActiveDirectory"
+    unauthenticated_action = "Return401"
+
+    active_directory_v2 {
+      client_id            = var.azured_app_client_id
+      tenant_auth_endpoint = "https://login.microsoftonline.com/${var.azure_tenant_id}/v2.0/"
+      allowed_audiences    = ["api://mobile-dashboard-api-rushikesh"]
+    }
+
+    login {
+      token_store_enabled = false
+    }
+  }
 }

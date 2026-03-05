@@ -1,7 +1,7 @@
 resource "aws_iam_openid_connect_provider" "azure_msi" {
-  url             = "https://login.microsoftonline.com/${var.azure_tenant_id}/v2.0"
-  client_id_list  = ["api://AzureADTokenExchange"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"] # Ensure this is current for 2026
+  url             = "https://sts.windows.net/${var.azure_tenant_id}/"   # ← Required: matches actual iss claim (trailing / is mandatory)
+  client_id_list  = ["api://sts.amazonaws.com"]                         # Keep this – matches your token aud/scope
+  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]        # Still correct for Microsoft certs
 
   tags = { Name = var.oidc_provider_name }
 }
@@ -20,10 +20,8 @@ resource "aws_iam_role" "azure_function_role" {
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
           StringEquals = {
-            "login.microsoftonline.com/${var.azure_tenant_id}/v2.0:aud" = "api://AzureADTokenExchange"
-            # NOTE: If this fails, temporarily change StringEquals to StringLike 
-            # and use "*" to debug the exact 'sub' value from Azure logs
-            "login.microsoftonline.com/${var.azure_tenant_id}/v2.0:sub" = var.managed_identity_principal_id
+            "sts.windows.net/${var.azure_tenant_id}/:aud" = "api://sts.amazonaws.com"   # ← Key changed to match new issuer
+            "sts.windows.net/${var.azure_tenant_id}/:sub" = var.managed_identity_principal_id  # principal_id (object ID) of user-assigned identity
           }
         }
       }
@@ -39,8 +37,8 @@ resource "aws_iam_role_policy" "s3_read_access" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = [
+        Effect = "Allow"
+        Action = [
           "s3:ListAllMyBuckets",
           "s3:GetBucketLocation",
           "s3:GetBucketVersioning",
@@ -53,8 +51,8 @@ resource "aws_iam_role_policy" "s3_read_access" {
         Resource = "*"
       },
       {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject"]
+        Effect = "Allow"
+        Action = ["s3:GetObject"]
         Resource = "arn:aws:s3:::*/*"
       }
     ]

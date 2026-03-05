@@ -6,6 +6,8 @@ resource "azuread_application" "auth_app" {
   owners           = [data.azuread_client_config.current.object_id]
   sign_in_audience = "AzureADMyOrg"
 
+  identifier_uris  = ["api://mobile-dashboard-api-rushikesh"]
+
   single_page_application {
     redirect_uris = var.frontend_urls
   }
@@ -22,12 +24,6 @@ resource "azuread_application" "auth_app" {
       type                       = "User"
     }
   }
-}
-
-# 2. Attach the Identifier URI (Avoids self-reference error)
-resource "azuread_application_identifier_uri" "app_uri" {
-  application_id = azuread_application.auth_app.id
-  identifier_uri = "api://mobile-dashboard-api-rushikesh"
 }
 
 # 3. Create Service Principal
@@ -57,7 +53,4 @@ resource "azuread_application_federated_identity_credential" "identity_trust" {
   audiences      = ["api://AzureADTokenExchange"]
   issuer         = "https://login.microsoftonline.com/${var.tenant_id}/v2.0"
   subject        = var.managed_identity_principal_id
-  
-  # Ensure the App and URI exist before creating trust
-  depends_on = [azuread_application_identifier_uri.app_uri]
 }

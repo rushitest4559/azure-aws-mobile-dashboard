@@ -2,107 +2,59 @@ import azure.functions as func
 import os
 import json
 import logging
+from datetime import datetime
 
+# Configure logging once at startup
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
+
+# Use a module-specific logger
 logger = logging.getLogger(__name__)
-
-try:
-    from methods.aws import (
-        get_s3_buckets_with_metadata,
-        get_s3_bucket_details
-    )
-    from methods.azure import (
-        get_azure_storage_accounts_with_metadata,
-        get_azure_storage_details
-    )
-    logger.info("Successfully imported aws and azure modules")
-except Exception as e:
-    logger.error(f"Failed to import modules: {str(e)}")
 
 app = func.FunctionApp()
 
-@app.route(route="aws/list", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
-def list_aws(req: func.HttpRequest) -> func.HttpResponse:
-    logger.info("Route hit: /aws/list")
-    try:
-        data = get_s3_buckets_with_metadata()
-        return func.HttpResponse(
-            json.dumps(data, default=str),
-            mimetype="application/json",
-            status_code=200
-        )
-    except Exception as e:
-        logger.exception("Error in list_aws")
-        return func.HttpResponse(
-            json.dumps({"error": str(e)}),
-            status_code=500,
-            mimetype="application/json"
-        )
+def http_json_response(data, status_code=200, error_message=None):
+    if error_message:
+        body = {
+            "error": error_message,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    else:
+        body = data
+    return func.HttpResponse(
+        json.dumps(body, default=str),
+        mimetype="application/json",
+        status_code=status_code
+    )
 
-@app.route(route="azure/list", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
-def list_azure(req: func.HttpRequest) -> func.HttpResponse:
-    logger.info("Route hit: /azure/list")
-    try:
-        sub_id = os.environ.get('AZURE_SUBSCRIPTION_ID')
-        if not sub_id:
-            return func.HttpResponse("Subscription ID not configured", status_code=500)
-        
-        data = get_azure_storage_accounts_with_metadata(sub_id)
-        return func.HttpResponse(
-            json.dumps(data, default=str),
-            mimetype="application/json",
-            status_code=200
-        )
-    except Exception as e:
-        logger.exception("Error in list_azure")
-        return func.HttpResponse(
-            json.dumps({"error": str(e)}),
-            status_code=500,
-            mimetype="application/json"
-        )
+# Import all AWS routes
+from routes.aws_routes import (
+    list_s3, list_eks, eks_details, s3_details, 
+    list_rds, rds_details, list_ec2, ec2_details
+)
 
-@app.route(route="aws/details", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
-def aws_details(req: func.HttpRequest) -> func.HttpResponse:
-    logger.info("Route hit: /aws/details")
-    try:
-        bucket_name = req.params.get('bucket_name')
-        if not bucket_name:
-            return func.HttpResponse("Missing bucket_name parameter", status_code=400)
-        
-        data = get_s3_bucket_details(bucket_name)
-        return func.HttpResponse(
-            json.dumps(data, default=str),
-            mimetype="application/json",
-            status_code=200
-        )
-    except Exception as e:
-        logger.exception(f"Error in aws_details for bucket: {bucket_name}")
-        return func.HttpResponse(
-            json.dumps({"error": str(e)}),
-            status_code=500,
-            mimetype="application/json"
-        )
+# Import all Azure routes
+from routes.azure_routes import (
+    list_azure_functions, azure_function_details, 
+    list_azure_storage_accounts, azure_storage_details
+)
 
-@app.route(route="azure/details", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
-def azure_details(req: func.HttpRequest) -> func.HttpResponse:
-    logger.info("Route hit: /azure/details")
-    try:
-        sub_id = os.environ.get('AZURE_SUBSCRIPTION_ID')
-        resource_group = req.params.get('resource_group')
-        account_name = req.params.get('account_name')
-        
-        if not all([sub_id, resource_group, account_name]):
-            return func.HttpResponse("Missing parameters", status_code=400)
-        
-        data = get_azure_storage_details(sub_id, resource_group, account_name)
-        return func.HttpResponse(
-            json.dumps(data, default=str),
-            mimetype="application/json",
-            status_code=200
-        )
-    except Exception as e:
-        logger.exception("Error in azure_details")
-        return func.HttpResponse(
-            json.dumps({"error": str(e)}),
-            status_code=500,
-            mimetype="application/json"
-        )
+# REGISTER ALL AWS ROUTES (AFTER app is created)
+app.route(route="aws/s3/list", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)(list_s3)
+app.route(route="aws/eks/list", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)(list_eks)
+app.route(route="aws/eks/details", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)(eks_details)
+app.route(route="aws/s3/details", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)(s3_details)
+app.route(route="aws/rds/list", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)(list_rds)
+app.route(route="aws/rds/details", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)(rds_details)
+app.route(route="aws/ec2/list", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)(list_ec2)
+app.route(route="aws/ec2/details", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)(ec2_details)
+
+# REGISTER ALL AZURE ROUTES
+app.route(route="azure/functions/list", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)(list_azure_functions)
+app.route(route="azure/functions/details", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)(azure_function_details)
+app.route(route="azure/storage/list", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)(list_azure_storage_accounts)
+app.route(route="azure/storage/details", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)(azure_storage_details)
+
+logger.info("✅ Functions loaded successfully - 12 routes registered!")

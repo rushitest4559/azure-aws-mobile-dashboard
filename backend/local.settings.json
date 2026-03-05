@@ -1,9 +1,13 @@
 {
   "IsEncrypted": false,
   "Values": {
+    "RUN_ENV": "local",
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "python",
-    "AZURE_SUBSCRIPTION_ID": "ee0be9cf-1cd4-4e1c-8f43-5bbec3127b77"
+    "AZURE_SUBSCRIPTION_ID": "ee0be9cf-1cd4-4e1c-8f43-5bbec3127b77",
+    "AZURE_TENANT_ID": "5f4096ce-7b27-4e3e-8fe4-ce7c1c051ae3",
+    "AZURE_CLIENT_ID": "ed8c924d-1f98-463b-ab99-37fc75136f97",
+    "AWS_ROLE_ARN": "arn:aws:iam::019138829474:role/AzureFunctionS3ReadRole"
   },
   "Host": {
     "CORS": "*"

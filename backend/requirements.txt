@@ -1,5 +1,9 @@
-azure-functions
-boto3
-azure-identity
+azure-functions==1.21.0
+azure-mgmt-web
+azure-mgmt-resource>=21.0.0
 azure-mgmt-storage
-azure-mgmt-resource
+azure-identity
+boto3>=1.34.0
+botocore
+requests
+python-dotenv

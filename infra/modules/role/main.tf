@@ -11,3 +11,9 @@ resource "azurerm_role_assignment" "storage_reader" {
   role_definition_name = "Reader"
   principal_id         = azurerm_user_assigned_identity.function_identity.principal_id
 }
+
+resource "azurerm_role_assignment" "identity_operator" {
+  scope                = azurerm_user_assigned_identity.function_identity.id
+  role_definition_name = "Managed Identity Operator"
+  principal_id         = azurerm_user_assigned_identity.function_identity.principal_id
+}

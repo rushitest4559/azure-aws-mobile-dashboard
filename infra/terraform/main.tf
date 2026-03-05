@@ -18,7 +18,7 @@ module "role" {
 module "auth_setup" {
   source                        = "../modules/auth_setup"
   tenant_id                     = var.tenant_id
-  managed_identity_principal_id = module.role.principal_id # Linked for Federated Identity
+  managed_identity_principal_id = module.role.managed_identity_principal_id # Linked for Federated Identity
 }
 
 # 4. AWS OIDC Provider & Roles
@@ -26,7 +26,7 @@ module "aws_oidc" {
   source                        = "../modules/aws_oidc"
   azure_tenant_id               = var.tenant_id
   azure_client_id               = module.auth_setup.client_id
-  managed_identity_principal_id = module.role.principal_id # Linked for OIDC Trust
+  managed_identity_principal_id = module.role.managed_identity_principal_id # Linked for OIDC Trust
   oidc_provider_name            = "Azure-to-AWS-OIDC"
   aws_role_name                 = "AzureFunctionS3ReadRole"
 }
@@ -38,6 +38,7 @@ module "azure_function" {
   resource_group_name = module.resource_group.name
   location            = var.location
   subscription_id     = var.subscription_id
+  azure_tenant_id = var.tenant_id
   managed_identity_id = module.role.managed_identity_id
   managed_identity_client_id = module.role.managed_identity_client_id
   aws_role_arn        = module.aws_oidc.aws_role_arn

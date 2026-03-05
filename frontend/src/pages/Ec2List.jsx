@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { FaCloud, FaSync, FaRobot, FaSpinner } from 'react-icons/fa';
+import { FaServer, FaSync, FaRobot, FaSpinner, FaCircle, FaPlay, FaPause } from 'react-icons/fa';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { secureFetch } from '../api'; 
 
-const S3List = () => {
+const EC2List = () => {
   const navigate = useNavigate();
   const [showSummary, setShowSummary] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -14,7 +14,7 @@ const S3List = () => {
   // 🔄 Load cached data from localStorage on mount
   const getCachedData = useCallback(() => {
     try {
-      const cached = localStorage.getItem('s3BucketsCache');
+      const cached = localStorage.getItem('ec2InstancesCache');
       return cached ? JSON.parse(cached) : null;
     } catch {
       return null;
@@ -24,7 +24,7 @@ const S3List = () => {
   // 💾 Save data to localStorage
   const saveToCache = useCallback((data) => {
     try {
-      localStorage.setItem('s3BucketsCache', JSON.stringify({
+      localStorage.setItem('ec2InstancesCache', JSON.stringify({
         data,
         timestamp: Date.now()
       }));
@@ -35,26 +35,26 @@ const S3List = () => {
 
   // Restore scroll position
   useEffect(() => {
-    const savedScrollPosition = sessionStorage.getItem('s3ListScrollPosition');
+    const savedScrollPosition = sessionStorage.getItem('ec2ListScrollPosition');
     if (savedScrollPosition) {
       window.scrollTo(0, parseInt(savedScrollPosition));
-      sessionStorage.removeItem('s3ListScrollPosition');
+      sessionStorage.removeItem('ec2ListScrollPosition');
     }
   }, []);
 
-  const handleNavigate = (name) => {
-    sessionStorage.setItem('s3ListScrollPosition', window.scrollY.toString());
-    navigate(`/aws/s3/details/${name}`);
+  const handleNavigate = (instanceId) => {
+    sessionStorage.setItem('ec2ListScrollPosition', window.scrollY.toString());
+    navigate(`/aws/ec2/details/${instanceId}`);
   };
 
   // 🚫 DISABLE AUTO-FETCH - Only manual sync
-  const { data: buckets = [], refetch, isFetching, error, isError } = useQuery({
-    queryKey: ['s3Buckets'],
+  const { data: instances = [], refetch, isFetching, error, isError } = useQuery({
+    queryKey: ['ec2Instances'],
     queryFn: async () => {
-      const res = await secureFetch(`${import.meta.env.VITE_API_URL}/aws/s3/list`);
+      const res = await secureFetch(`${import.meta.env.VITE_API_URL}/aws/ec2/list`);
 
       if (!res.ok) {
-        throw new Error(`Failed to fetch S3 buckets: ${res.statusText}`);
+        throw new Error(`Failed to fetch EC2 instances: ${res.statusText}`);
       }
 
       const data = await res.json();
@@ -69,7 +69,7 @@ const S3List = () => {
 
   // 🎯 Load cached data immediately for instant UI
   const cachedData = getCachedData();
-  const displayBuckets = cachedData?.data || [];
+  const displayInstances = cachedData?.data || [];
 
   const generateAISummary = async () => {
     setIsGenerating(true);
@@ -77,21 +77,22 @@ const S3List = () => {
 
     try {
       const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-      const bucketData = displayBuckets.map(bucket => ({
-        name: bucket.name,
-        region: bucket.region,
-        created: bucket.created,
+      const instanceData = displayInstances.map(instance => ({
+        id: instance.InstanceId,
+        state: instance.State?.Name,
+        type: instance.InstanceType,
+        region: instance.Placement?.AvailabilityZone?.split('-')[0],
       }));
 
-      const prompt = `Analyze these S3 buckets and provide exactly 2-3 key insights (each insight should be one concise sentence under 20 words):
+      const prompt = `Analyze these EC2 instances and provide exactly 2-3 key insights (each insight one concise sentence under 20 words):
 
-S3 Bucket Data:
-${JSON.stringify(bucketData, null, 2)}
+EC2 Instance Data:
+${JSON.stringify(instanceData, null, 2)}
 
 Focus on:
-- Regional distribution and recommendations
-- Bucket age and lifecycle management
-- Naming patterns and organization
+- Instance state distribution (running/stopped)
+- Instance type usage and cost optimization  
+- Regional distribution recommendations
 
 Format your response as:
 1. First insight here
@@ -115,24 +116,32 @@ Format your response as:
         setAiSummary(insights.slice(0, 3));
       } else {
         setAiSummary([
-          text.trim() || `${displayBuckets.length} S3 buckets analyzed successfully`,
-          'Review regional distribution for optimal performance and cost',
-          'Consider bucket lifecycle policies for older buckets'
+          `${displayInstances.length} EC2 instances analyzed successfully`,
+          'Review stopped instances for potential termination savings',
+          'Consider rightsizing based on instance type distribution'
         ]);
       }
 
     } catch (error) {
       console.error('AI Summary generation failed:', error);
-      const totalBuckets = displayBuckets.length;
-      const regions = new Set(displayBuckets.map(b => b.region)).size;
+      const runningCount = displayInstances.filter(i => i.State?.Name === 'running').length;
+      const stoppedCount = displayInstances.length - runningCount;
 
       setAiSummary([
-        `${totalBuckets} S3 buckets across ${regions} regions`,
-        `Oldest bucket: ${displayBuckets.length > 0 ? new Date(displayBuckets[0].created).toLocaleDateString() : 'N/A'}`,
-        'Review bucket policies and access controls'
+        `${displayInstances.length} EC2 instances (${runningCount} running, ${stoppedCount} stopped)`,
+        `Most common type: ${displayInstances.length > 0 ? displayInstances[0].InstanceType : 'N/A'}`,
+        'Review instance utilization and right-sizing opportunities'
       ]);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const getStateIcon = (state) => {
+    switch (state?.toLowerCase()) {
+      case 'running': return <FaPlay className="text-green-500" />;
+      case 'stopped': return <FaPause className="text-orange-500" />;
+      default: return <FaCircle className="text-gray-400" />;
     }
   };
 
@@ -143,9 +152,9 @@ Format your response as:
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 sm:h-20">
             <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
-              S3 Buckets {displayBuckets.length > 0 && (
+              EC2 Instances {displayInstances.length > 0 && (
                 <span className="text-sm text-gray-500 font-normal ml-2">
-                  ({displayBuckets.length})
+                  ({displayInstances.length})
                 </span>
               )}
             </h1>
@@ -164,8 +173,8 @@ Format your response as:
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Show cached data count for AI insights */}
-        {displayBuckets.length > 0 && (
+        {/* AI Insights */}
+        {displayInstances.length > 0 && (
           <div className="mb-6">
             {!showSummary ? (
               <button
@@ -175,11 +184,11 @@ Format your response as:
               >
                 <FaRobot className="text-lg" />
                 <span className="font-medium">
-                  Generate AI Insights ({displayBuckets.length} buckets)
+                  Generate AI Insights ({displayInstances.length} instances)
                 </span>
               </button>
             ) : (
-              // AI Summary component
+              // AI Summary component (same as S3)
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -200,7 +209,7 @@ Format your response as:
                   {isGenerating ? (
                     <div className="flex flex-col items-center justify-center py-8">
                       <FaSpinner className="text-3xl text-orange-600 animate-spin mb-3" />
-                      <p className="text-sm text-gray-500">Analyzing your S3 buckets...</p>
+                      <p className="text-sm text-gray-500">Analyzing your EC2 instances...</p>
                     </div>
                   ) : aiSummary ? (
                     <div className="space-y-3">
@@ -223,13 +232,13 @@ Format your response as:
         )}
 
         {/* No cached data */}
-        {!isFetching && displayBuckets.length === 0 ? (
+        {!isFetching && displayInstances.length === 0 ? (
           <div className="text-center py-16 sm:py-20">
             <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-full mb-4">
-              <FaCloud className="text-2xl sm:text-3xl text-gray-400" />
+              <FaServer className="text-2xl sm:text-3xl text-gray-400" />
             </div>
-            <p className="text-base sm:text-lg font-medium text-gray-900 mb-1">No S3 buckets</p>
-            <p className="text-sm text-gray-500 mb-4">Press sync to load your AWS S3 buckets</p>
+            <p className="text-base sm:text-lg font-medium text-gray-900 mb-1">No EC2 instances</p>
+            <p className="text-sm text-gray-500 mb-4">Press sync to load your AWS EC2 instances</p>
             <div className="text-xs text-gray-400">
               Data loads instantly from cache after first sync
             </div>
@@ -241,19 +250,24 @@ Format your response as:
               <table className="w-full">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Bucket Name</th>
+                    <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Instance ID</th>
+                    <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">State</th>
+                    <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
                     <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Region</th>
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Created</th>
                     <th className="text-right px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {displayBuckets.map(bucket => (
-                    <tr key={bucket.name} onClick={() => handleNavigate(bucket.name)} className="hover:bg-orange-50/50 cursor-pointer transition-colors">
-                      <td className="px-6 py-4 font-medium text-gray-900">{bucket.name}</td>
-                      <td className="px-6 py-4 text-gray-600">{bucket.region}</td>
+                  {displayInstances.map(instance => (
+                    <tr key={instance.InstanceId} onClick={() => handleNavigate(instance.InstanceId)} className="hover:bg-orange-50/50 cursor-pointer transition-colors">
+                      <td className="px-6 py-4 font-medium text-gray-900 max-w-xs truncate" title={instance.InstanceId}>{instance.InstanceId}</td>
+                      <td className="px-6 py-4 flex items-center gap-2">
+                        {getStateIcon(instance.State?.Name)}
+                        <span className="text-sm">{instance.State?.Name || '—'}</span>
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">{instance.InstanceType || '—'}</td>
                       <td className="px-6 py-4 text-sm text-gray-500">
-                        {bucket.created ? new Date(bucket.created).toLocaleDateString() : '—'}
+                        {instance.Placement?.AvailabilityZone?.split('-')[0] || '—'}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button className="text-orange-600 hover:text-orange-700 font-medium text-sm">Details</button>
@@ -266,27 +280,25 @@ Format your response as:
 
             {/* Mobile Cards */}
             <div className="lg:hidden space-y-3">
-              {displayBuckets.map(bucket => (
-                <div key={bucket.name} onClick={() => handleNavigate(bucket.name)} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden active:scale-[0.98] transition-transform">
+              {displayInstances.map(instance => (
+                <div key={instance.InstanceId} onClick={() => handleNavigate(instance.InstanceId)} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden active:scale-[0.98] transition-transform">
                   <div className="px-4 py-3.5 border-b border-gray-50">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 truncate mb-1">{bucket.name}</h3>
-                        <p className="text-xs text-gray-500 truncate">{bucket.region}</p>
+                        <h3 className="font-semibold text-gray-900 text-sm truncate mb-1" title={instance.InstanceId}>{instance.InstanceId}</h3>
+                        <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
+                          {getStateIcon(instance.State?.Name)}
+                          <span>{instance.State?.Name || 'unknown'}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 truncate">{instance.InstanceType}</p>
                       </div>
-                    </div>
-                  </div>
-                  <div className="px-4 py-3 space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">Created</span>
-                      <span className="font-medium text-gray-900">
-                        {bucket.created ? new Date(bucket.created).toLocaleDateString() : '—'}
-                      </span>
                     </div>
                   </div>
                   <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500">Tap to view details</span>
+                      <span className="text-xs text-gray-500">
+                        {instance.Placement?.AvailabilityZone?.split('-')[0] || '—'}
+                      </span>
                       <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
@@ -302,4 +314,4 @@ Format your response as:
   );
 };
 
-export default S3List;
+export default EC2List;

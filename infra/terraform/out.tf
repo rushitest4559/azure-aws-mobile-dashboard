@@ -1,5 +1,9 @@
-output "AZURE_CLIENT_ID" {
+output "AZURE_APP_CLIENT_ID" {
   value = module.auth_setup.client_id
+}
+
+output "AZURE_MANAGED_IDENTITY_CLIENT_ID" {
+  value = module.role.managed_identity_client_id
 }
 
 output "AZURE_TENANT_ID" {

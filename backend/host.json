@@ -8,5 +8,18 @@
     "http": {
       "routePrefix": ""
     }
+  },
+  "logging": {
+    "logLevel": {
+      "default": "Information",
+      "Function": "Information",
+      "Host.Results": "Information",
+      "Host.Triggers": "Information"
+    },
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": false
+      }
+    }
   }
 }
