@@ -60,7 +60,7 @@ function App() {
             
             {/* AWS RDS Routes - NEW */}
             <Route path="/aws/rds/list" element={<RDSList />} />
-            <Route path="/aws/rds/details/:instanceId" element={<RDSDetails />} />
+            <Route path="/aws/rds/details/:instanceId/:region" element={<RDSDetails />} />
             
             {/* AWS EKS Routes */}
             <Route path="/aws/eks/list" element={<EksList />} />

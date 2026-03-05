@@ -42,10 +42,11 @@ const RDSList = () => {
     }
   }, []);
 
-  const handleNavigate = (instanceIdentifier) => {
-    sessionStorage.setItem('rdsListScrollPosition', window.scrollY.toString());
-    navigate(`/aws/rds/details/${instanceIdentifier}`);
-  };
+  const handleNavigate = (instance, e) => {  // Pass FULL instance object
+  e?.stopPropagation(); // Prevent row click
+  sessionStorage.setItem('rdsListScrollPosition', window.scrollY.toString());
+  navigate(`/aws/rds/details/${instance.db_instance_identifier}/${instance.region}`);
+};
 
   // 🚫 DISABLE AUTO-FETCH - Only manual sync
   const { data: instances = [], refetch, isFetching, error, isError } = useQuery({
@@ -262,7 +263,7 @@ Format your response as:
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {displayInstances.map(instance => (
-                    <tr key={instance.db_instance_identifier} onClick={() => handleNavigate(instance.db_instance_identifier)} className="hover:bg-blue-50/50 cursor-pointer transition-colors">
+                    <tr key={instance.db_instance_identifier} onClick={(e) => handleNavigate(instance, e)} className="hover:bg-blue-50/50 cursor-pointer transition-colors">
                       <td className="px-6 py-4 font-medium text-gray-900 max-w-xs truncate" title={instance.db_instance_identifier}>
                         {instance.db_instance_identifier}
                       </td>
@@ -287,7 +288,7 @@ Format your response as:
             {/* Mobile Cards */}
             <div className="lg:hidden space-y-3">
               {displayInstances.map(instance => (
-                <div key={instance.db_instance_identifier} onClick={() => handleNavigate(instance.db_instance_identifier)} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden active:scale-[0.98] transition-transform">
+                <div key={instance.db_instance_identifier} onClick={(e) => handleNavigate(instance, e)} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden active:scale-[0.98] transition-transform">
                   <div className="px-4 py-3.5 border-b border-gray-50">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
