@@ -174,6 +174,9 @@ export default function Home() {
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
+          overflowX: "hidden",    /* ← prevent any child from bleeding out */
+          width: "100%",
+          maxWidth: "100vw",
         }}
       >
 
@@ -306,6 +309,7 @@ export default function Home() {
           display: "grid",
           gridTemplateColumns: "repeat(2, 1fr)",
           gap: 12,
+          boxSizing: "border-box",   /* ← padding included in width, never overflows */
         }}>
           {services.map((svc, i) => (
             <Link
