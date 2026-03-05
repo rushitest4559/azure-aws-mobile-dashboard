@@ -5,10 +5,34 @@ import { Link, useLocation } from "react-router-dom";
 import { useMsal, useAccount } from "@azure/msal-react";
 
 /*
- * Navbar — Apple-inspired, mobile-first
- * Design language: SF-style clarity · frosted glass · physical motion · zero noise
- * Mobile: full-sheet drawer with icon-first nav cards
- * Logout: minimal, red, impossible to forget — no decoration needed
+ * ╔══════════════════════════════════════════════════════════════╗
+ * ║           CLOUD CONTROL — GLOBAL DESIGN SYSTEM              ║
+ * ╠══════════════════════════════════════════════════════════════╣
+ * ║  FONTS                                                       ║
+ * ║  Display / Brand  →  "Syne"   wght 400–800                  ║
+ * ║                       geometric, wide, commanding            ║
+ * ║  UI / Body        →  "Outfit" wght 300–700                  ║
+ * ║                       modern, airy, perfectly readable       ║
+ * ║                                                              ║
+ * ║  COLORS                                                      ║
+ * ║  --ink        #0A0F1E   deepest navy-black (NOT pure black)  ║
+ * ║  --ink-soft   #1E2A3B   secondary text, icon fills           ║
+ * ║  --surface    #F5F7FA   page / sheet background              ║
+ * ║  --card       #FFFFFF   elevated card surface                ║
+ * ║  --border     rgba(10,15,30,0.08)  hairline borders          ║
+ * ║  --accent     #0066FF   electric blue — primary actions      ║
+ * ║  --green      #00C875   live / healthy / success             ║
+ * ║  --red        #FF3B30   iOS-native destructive red           ║
+ * ║  --muted      #8A95A8   labels, metadata, placeholders       ║
+ * ║                                                              ║
+ * ║  RADIUS                                                      ║
+ * ║  --r-sm 10px  --r-md 14px  --r-lg 20px  --r-xl 26px         ║
+ * ║                                                              ║
+ * ║  SHADOWS                                                     ║
+ * ║  --s-card  0 2px 12px rgba(10,15,30,0.07)                   ║
+ * ║  --s-lift  0 8px 32px rgba(10,15,30,0.14)                   ║
+ * ║  --s-deep  0 20px 60px rgba(10,15,30,0.22)                  ║
+ * ╚══════════════════════════════════════════════════════════════╝
  */
 
 export default function Navbar() {
@@ -18,219 +42,306 @@ export default function Navbar() {
   const account = useAccount(accounts[0] || {});
 
   const navLinks = [
-    { name: "Storage Accounts", path: "/azure/storage/list", icon: <FaDatabase />, label: "Azure" },
-    { name: "Function Apps",    path: "/azure/functions",    icon: <FaMicrochip />, label: "Azure" },
-    { name: "S3 Buckets",       path: "/aws/s3/list",        icon: <FaCloud />,     label: "AWS"   },
-    { name: "EC2 Instances",    path: "/aws/ec2/list",       icon: <FaServer />,    label: "AWS"   },
-    { name: "EKS Clusters",     path: "/aws/eks/list",       icon: <SiKubernetes />,label: "AWS"   },
-    { name: "RDS Databases",    path: "/aws/rds/list",       icon: <FaHdd />,       label: "AWS"   },
+    { name: "Storage Accounts", path: "/azure/storage/list", icon: <FaDatabase />,   provider: "Azure" },
+    { name: "Function Apps",    path: "/azure/functions",    icon: <FaMicrochip />,  provider: "Azure" },
+    { name: "S3 Buckets",       path: "/aws/s3/list",        icon: <FaCloud />,      provider: "AWS"   },
+    { name: "EC2 Instances",    path: "/aws/ec2/list",       icon: <FaServer />,     provider: "AWS"   },
+    { name: "EKS Clusters",     path: "/aws/eks/list",       icon: <SiKubernetes />, provider: "AWS"   },
+    { name: "RDS Databases",    path: "/aws/rds/list",       icon: <FaHdd />,        provider: "AWS"   },
   ];
 
-  const isActive = (path) => location.pathname === path;
-
+  const isActive  = (path) => location.pathname === path;
   const handleLogout = () => {
-    const logoutRequest = {
+    instance.logoutRedirect({
       postLogoutRedirectUri: window.location.origin,
       mainWindowRedirectUri: window.location.origin,
-    };
-    instance.logoutRedirect(logoutRequest);
+    });
   };
 
-  const userName = account?.name || account?.username || "User";
-  const initials = userName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+  const userName  = account?.name || account?.username || "User";
+  const initials  = userName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
   const firstName = userName.split(" ")[0];
 
   return (
     <>
-      {/* ─── Inject keyframes & font ─────────────────────────────── */}
+      {/* ── Design tokens + animations ────────────────────────────────── */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap');
 
-        .nav-root * { font-family: 'DM Sans', -apple-system, sans-serif; }
-
-        /* Drawer slide-up */
-        .drawer-enter  { transform: translateY(100%); opacity: 0; }
-        .drawer-open   { transform: translateY(0);    opacity: 1; }
-        .drawer-closed { transform: translateY(100%); opacity: 0; pointer-events: none; }
-
-        /* Overlay fade */
-        .overlay-open   { opacity: 1; pointer-events: all; }
-        .overlay-closed { opacity: 0; pointer-events: none; }
-
-        /* Nav card press */
-        .nav-card:active { transform: scale(0.97); }
-
-        /* Logout pulse ring on mount */
-        @keyframes ring-pulse {
-          0%   { box-shadow: 0 0 0 0 rgba(239,68,68,0.35); }
-          70%  { box-shadow: 0 0 0 10px rgba(239,68,68,0);  }
-          100% { box-shadow: 0 0 0 0 rgba(239,68,68,0);     }
+        :root {
+          --ink:       #0A0F1E;
+          --ink-soft:  #1E2A3B;
+          --surface:   #F5F7FA;
+          --card:      #FFFFFF;
+          --border:    rgba(10,15,30,0.08);
+          --accent:    #0066FF;
+          --green:     #00C875;
+          --red:       #FF3B30;
+          --muted:     #8A95A8;
+          --r-sm:      10px;
+          --r-md:      14px;
+          --r-lg:      20px;
+          --r-xl:      26px;
+          --s-card:    0 2px 12px rgba(10,15,30,0.07);
+          --s-lift:    0 8px 32px rgba(10,15,30,0.14);
+          --s-deep:    0 20px 60px rgba(10,15,30,0.22);
         }
-        .logout-btn { animation: ring-pulse 2.4s ease-out 0.8s 1; }
-        .logout-btn:active { transform: scale(0.96); }
 
-        /* Stagger fade-up for nav cards */
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(18px); }
-          to   { opacity: 1; transform: translateY(0); }
+        .cc, .cc * {
+          font-family: 'Outfit', -apple-system, sans-serif;
+          box-sizing: border-box;
+          -webkit-tap-highlight-color: transparent;
         }
-        .nav-card-animate {
+
+        /* Drawer */
+        .cc-drawer {
+          transform: translateY(100%);
           opacity: 0;
-          animation: fadeUp 0.38s cubic-bezier(0.22,1,0.36,1) forwards;
+          transition:
+            transform 0.52s cubic-bezier(0.22, 1, 0.36, 1),
+            opacity   0.3s  ease;
+        }
+        .cc-drawer.open {
+          transform: translateY(0);
+          opacity: 1;
+        }
+
+        /* Scrim */
+        .cc-scrim {
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.3s ease;
+          background: rgba(10,15,30,0.4);
+          backdrop-filter: blur(4px);
+          -webkit-backdrop-filter: blur(4px);
+        }
+        .cc-scrim.open {
+          opacity: 1;
+          pointer-events: all;
+        }
+
+        /* Nav item stagger */
+        @keyframes cc-up {
+          from { opacity: 0; transform: translateY(14px); }
+          to   { opacity: 1; transform: translateY(0);    }
+        }
+        .cc-item {
+          opacity: 0;
+          animation: cc-up 0.38s cubic-bezier(0.22,1,0.36,1) forwards;
+        }
+
+        /* Logout red ring — fires once, 1.2s after drawer opens */
+        @keyframes cc-ring {
+          0%   { box-shadow: 0 0 0 0   rgba(255,59,48,0.45); }
+          65%  { box-shadow: 0 0 0 12px rgba(255,59,48,0);   }
+          100% { box-shadow: 0 0 0 0   rgba(255,59,48,0);    }
+        }
+        .cc-logout-ring {
+          animation: cc-ring 2.4s ease-out 1.2s 1;
+        }
+
+        /* Haptic-feel press */
+        .cc-pressable:active { transform: scale(0.97); transition: transform 0.1s ease; }
+
+        /* Hamburger bars */
+        .cc-bar {
+          display: block;
+          width: 18px; height: 1.5px;
+          background: var(--ink);
+          border-radius: 2px;
+          transform-origin: center;
+          transition:
+            transform 0.28s cubic-bezier(0.4,0,0.2,1),
+            opacity   0.2s  ease,
+            width     0.28s ease;
         }
       `}</style>
 
-      <nav className="nav-root fixed top-0 w-full z-50"
-           style={{ background: "rgba(255,255,255,0.82)", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+      {/* ── Top bar ───────────────────────────────────────────────────── */}
+      <nav className="cc" style={{
+        position:  "fixed", top: 0, left: 0, right: 0, zIndex: 50,
+        height:    56,
+        background:"rgba(245,247,250,0.9)",
+        backdropFilter:         "blur(28px)",
+        WebkitBackdropFilter:   "blur(28px)",
+        borderBottom: "1px solid var(--border)",
+      }}>
+        <div style={{
+          maxWidth: 680, margin: "0 auto", padding: "0 18px",
+          height: "100%", display: "flex",
+          alignItems: "center", justifyContent: "space-between"
+        }}>
 
-        <div className="max-w-2xl mx-auto px-5">
-          <div className="flex justify-between items-center" style={{ height: 56 }}>
-
-            {/* ── Brand ──────────────────────────────────────────── */}
-            <Link to="/" className="flex items-center gap-2.5" onClick={() => setOpen(false)}
-                  style={{ textDecoration: "none" }}>
-              <div style={{
-                width: 34, height: 34,
-                background: "linear-gradient(145deg, #0f172a 0%, #1e293b 100%)",
-                borderRadius: 10,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.12)"
-              }}>
-                <FaLayerGroup style={{ color: "#fff", fontSize: 13 }} />
-              </div>
-              <div style={{ lineHeight: 1 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.3px" }}>
-                  Cloud<span style={{ fontWeight: 300 }}>Control</span>
-                </div>
-              </div>
-            </Link>
-
-            {/* ── Right: avatar + hamburger ───────────────────────── */}
-            <div className="flex items-center gap-3">
-
-              {/* Avatar — always visible */}
-              <div style={{
-                width: 32, height: 32,
-                background: "linear-gradient(145deg, #0f172a 0%, #334155 100%)",
-                borderRadius: "50%",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                boxShadow: "0 1px 4px rgba(0,0,0,0.2)"
-              }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", letterSpacing: "0.5px" }}>
-                  {initials}
-                </span>
-              </div>
-
-              {/* Hamburger */}
-              <button
-                onClick={() => setOpen(!open)}
-                style={{
-                  width: 36, height: 36,
-                  background: open ? "#f1f5f9" : "transparent",
-                  border: "none", borderRadius: 10,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: "pointer", transition: "background 0.2s"
-                }}
-                aria-label="Menu"
-              >
-                {/* Animated lines → X */}
-                <div style={{ width: 18, height: 14, position: "relative" }}>
-                  <span style={{
-                    position: "absolute", left: 0, width: "100%", height: 1.5,
-                    background: "#0f172a", borderRadius: 2,
-                    top: open ? "50%" : 0,
-                    transform: open ? "translateY(-50%) rotate(45deg)" : "none",
-                    transition: "all 0.26s cubic-bezier(0.4,0,0.2,1)"
-                  }} />
-                  <span style={{
-                    position: "absolute", left: 0, width: "100%", height: 1.5,
-                    background: "#0f172a", borderRadius: 2, top: "50%", marginTop: -0.75,
-                    opacity: open ? 0 : 1, transform: open ? "scaleX(0)" : "scaleX(1)",
-                    transition: "all 0.2s cubic-bezier(0.4,0,0.2,1)"
-                  }} />
-                  <span style={{
-                    position: "absolute", left: 0, width: "100%", height: 1.5,
-                    background: "#0f172a", borderRadius: 2,
-                    bottom: open ? "50%" : 0,
-                    transform: open ? "translateY(50%) rotate(-45deg)" : "none",
-                    transition: "all 0.26s cubic-bezier(0.4,0,0.2,1)"
-                  }} />
-                </div>
-              </button>
+          {/* Brand */}
+          <Link to="/" onClick={() => setOpen(false)}
+                style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: "var(--r-sm)",
+              background: "var(--ink)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 2px 10px rgba(10,15,30,0.3), inset 0 1px 0 rgba(255,255,255,0.1)",
+              flexShrink: 0
+            }}>
+              <FaLayerGroup style={{ color: "#fff", fontSize: 12 }} />
             </div>
+            <span style={{
+              fontFamily: "'Syne', sans-serif",
+              fontSize: 17, fontWeight: 700,
+              color: "var(--ink)", letterSpacing: "-0.5px", lineHeight: 1
+            }}>
+              Cloud<span style={{ fontWeight: 400, color: "var(--muted)" }}>Control</span>
+            </span>
+          </Link>
+
+          {/* Right: avatar pill + menu button */}
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+
+            {/* Avatar pill */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 7,
+              padding: "4px 11px 4px 5px",
+              background: "var(--card)",
+              border: "1px solid var(--border)",
+              borderRadius: 99,
+              boxShadow: "var(--s-card)"
+            }}>
+              <div style={{
+                width: 24, height: 24, borderRadius: "50%",
+                background: "var(--ink)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <span style={{
+                  fontFamily: "'Syne', sans-serif",
+                  fontSize: 9, fontWeight: 700, color: "#fff", letterSpacing: "0.3px"
+                }}>{initials}</span>
+              </div>
+              <span style={{
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: 13, fontWeight: 500, color: "var(--ink-soft)",
+                maxWidth: 68, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis"
+              }}>{firstName}</span>
+            </div>
+
+            {/* Menu button */}
+            <button
+              onClick={() => setOpen(o => !o)}
+              aria-label="Toggle menu"
+              style={{
+                width: 36, height: 36, border: "none", cursor: "pointer",
+                background: open ? "var(--card)" : "transparent",
+                borderRadius: "var(--r-sm)",
+                display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center", gap: 4.5,
+                transition: "background 0.2s",
+                boxShadow: open ? "var(--s-card)" : "none",
+                padding: 0,
+              }}
+            >
+              <span className="cc-bar" style={{
+                transform: open ? "translateY(6px) rotate(45deg)" : "none"
+              }} />
+              <span className="cc-bar" style={{
+                opacity: open ? 0 : 1,
+                width:   open ? "0px" : "18px"
+              }} />
+              <span className="cc-bar" style={{
+                transform: open ? "translateY(-6px) rotate(-45deg)" : "none"
+              }} />
+            </button>
           </div>
         </div>
       </nav>
 
-      {/* ─── Scrim overlay ──────────────────────────────────────── */}
-      <div
-        onClick={() => setOpen(false)}
-        className={`overlay-${open ? "open" : "closed"}`}
-        style={{
-          position: "fixed", inset: 0, zIndex: 40,
-          background: "rgba(0,0,0,0.32)",
-          backdropFilter: "blur(2px)",
-          transition: "opacity 0.3s ease"
-        }}
-      />
+      {/* ── Scrim ─────────────────────────────────────────────────────── */}
+      <div className={`cc cc-scrim ${open ? "open" : ""}`}
+           onClick={() => setOpen(false)}
+           style={{ position: "fixed", inset: 0, zIndex: 48 }} />
 
-      {/* ─── Bottom Sheet Drawer ─────────────────────────────────── */}
-      <div
-        className={`drawer-${open ? "open" : "closed"}`}
-        style={{
-          position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50,
-          background: "#f8fafc",
-          borderRadius: "24px 24px 0 0",
-          boxShadow: "0 -8px 40px rgba(0,0,0,0.18)",
-          padding: "0 0 calc(env(safe-area-inset-bottom) + 24px)",
-          transition: "transform 0.42s cubic-bezier(0.22,1,0.36,1), opacity 0.3s ease",
-          maxHeight: "88vh", overflowY: "auto"
-        }}
-      >
-        {/* Drag handle */}
-        <div style={{ display: "flex", justifyContent: "center", paddingTop: 12, paddingBottom: 8 }}>
-          <div style={{ width: 36, height: 4, background: "#cbd5e1", borderRadius: 2 }} />
+      {/* ── Bottom sheet ──────────────────────────────────────────────── */}
+      <div className={`cc cc-drawer ${open ? "open" : ""}`} style={{
+        position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 49,
+        background: "var(--surface)",
+        borderRadius: "22px 22px 0 0",
+        boxShadow: "var(--s-deep)",
+        paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 28px)",
+        maxHeight: "90vh", overflowY: "auto",
+      }}>
+
+        {/* Handle */}
+        <div style={{ display: "flex", justifyContent: "center", padding: "13px 0 6px" }}>
+          <div style={{ width: 34, height: 3.5, background: "rgba(10,15,30,0.12)", borderRadius: 99 }} />
         </div>
 
-        <div style={{ padding: "0 20px" }}>
+        <div style={{ padding: "4px 16px 0" }}>
 
-          {/* ── User greeting ─────────────────────────────────── */}
+          {/* ── User card ─────────────────────────────────────────── */}
           <div style={{
             display: "flex", alignItems: "center", gap: 14,
-            padding: "14px 16px",
-            background: "#fff",
-            borderRadius: 16,
+            padding: "13px 15px",
+            background: "var(--card)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--r-lg)",
+            boxShadow: "var(--s-card)",
             marginBottom: 20,
-            boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-            border: "1px solid rgba(0,0,0,0.05)"
           }}>
+            {/* Avatar */}
             <div style={{
-              width: 44, height: 44,
-              background: "linear-gradient(145deg, #0f172a 0%, #334155 100%)",
-              borderRadius: 13,
+              width: 44, height: 44, borderRadius: 13, flexShrink: 0,
+              background: "var(--ink)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              flexShrink: 0,
-              boxShadow: "0 2px 8px rgba(0,0,0,0.2)"
+              boxShadow: "0 4px 14px rgba(10,15,30,0.22)"
             }}>
-              <span style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{initials}</span>
+              <span style={{
+                fontFamily: "'Syne', sans-serif",
+                fontSize: 15, fontWeight: 700, color: "#fff"
+              }}>{initials}</span>
             </div>
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: "#0f172a", letterSpacing: "-0.2px" }}>
-                {firstName}
-              </div>
-              <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 500, letterSpacing: "0.4px", marginTop: 1 }}>
-                CLOUD CONTROL
-              </div>
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontFamily: "'Syne', sans-serif",
+                fontSize: 16, fontWeight: 700,
+                color: "var(--ink)", letterSpacing: "-0.3px"
+              }}>{firstName}</div>
+              <div style={{
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: 10.5, fontWeight: 500,
+                color: "var(--muted)", letterSpacing: "1.1px",
+                textTransform: "uppercase", marginTop: 2
+              }}>Cloud Control</div>
+            </div>
+
+            {/* Live badge */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "4px 9px",
+              background: "rgba(0,200,117,0.08)",
+              border: "1px solid rgba(0,200,117,0.2)",
+              borderRadius: 99,
+            }}>
+              <div style={{
+                width: 6, height: 6, borderRadius: "50%",
+                background: "var(--green)",
+                boxShadow: "0 0 7px rgba(0,200,117,0.75)"
+              }} />
+              <span style={{
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: 11, fontWeight: 600,
+                color: "var(--green)", letterSpacing: "0.1px"
+              }}>Live</span>
             </div>
           </div>
 
-          {/* ── Section label ─────────────────────────────────── */}
-          <div style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", letterSpacing: "0.8px", marginBottom: 10, paddingLeft: 4 }}>
-            SERVICES
-          </div>
+          {/* ── Section label ────────────────────────────────────── */}
+          <div style={{
+            fontFamily: "'Outfit', sans-serif",
+            fontSize: 10.5, fontWeight: 600, color: "var(--muted)",
+            letterSpacing: "1.3px", textTransform: "uppercase",
+            marginBottom: 9, paddingLeft: 3
+          }}>Services</div>
 
-          {/* ── Nav Cards ─────────────────────────────────────── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28 }}>
+          {/* ── Nav cards ────────────────────────────────────────── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 22 }}>
             {navLinks.map((link, i) => {
               const active = isActive(link.path);
               return (
@@ -238,29 +349,30 @@ export default function Navbar() {
                   key={link.path}
                   to={link.path}
                   onClick={() => setOpen(false)}
-                  className="nav-card nav-card-animate"
+                  className={`cc-item cc-pressable`}
                   style={{
-                    display: "flex", alignItems: "center", gap: 14,
-                    padding: "14px 16px",
-                    background: active ? "#0f172a" : "#fff",
-                    borderRadius: 14,
+                    display: "flex", alignItems: "center", gap: 13,
+                    padding: "13px 14px",
+                    borderRadius: "var(--r-md)",
                     textDecoration: "none",
-                    border: active ? "none" : "1px solid rgba(0,0,0,0.05)",
+                    animationDelay: `${i * 0.048}s`,
+                    transition: "box-shadow 0.2s ease, background 0.2s ease",
+                    background: active ? "var(--ink)" : "var(--card)",
+                    border: active ? "none" : "1px solid var(--border)",
                     boxShadow: active
-                      ? "0 4px 14px rgba(15,23,42,0.25)"
-                      : "0 1px 3px rgba(0,0,0,0.05)",
-                    transition: "all 0.22s cubic-bezier(0.4,0,0.2,1)",
-                    animationDelay: `${i * 0.045}s`,
-                    cursor: "pointer"
+                      ? "0 6px 24px rgba(10,15,30,0.28)"
+                      : "var(--s-card)",
                   }}
                 >
                   {/* Icon */}
                   <div style={{
-                    width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+                    width: 38, height: 38, borderRadius: "var(--r-sm)",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    background: active ? "rgba(255,255,255,0.12)" : "#f1f5f9",
+                    flexShrink: 0,
+                    background: active ? "rgba(255,255,255,0.1)" : "var(--surface)",
+                    border: `1px solid ${active ? "rgba(255,255,255,0.07)" : "var(--border)"}`,
                   }}>
-                    <span style={{ fontSize: 16, color: active ? "#fff" : "#475569" }}>
+                    <span style={{ fontSize: 15, color: active ? "#fff" : "var(--ink-soft)" }}>
                       {link.icon}
                     </span>
                   </div>
@@ -268,37 +380,31 @@ export default function Navbar() {
                   {/* Text */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{
+                      fontFamily: "'Outfit', sans-serif",
                       fontSize: 15, fontWeight: 600,
-                      color: active ? "#fff" : "#0f172a",
+                      color: active ? "#fff" : "var(--ink)",
                       letterSpacing: "-0.1px",
-                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
-                    }}>
-                      {link.name}
-                    </div>
+                      overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis"
+                    }}>{link.name}</div>
                     <div style={{
-                      fontSize: 11, fontWeight: 500,
-                      color: active ? "rgba(255,255,255,0.5)" : "#94a3b8",
-                      letterSpacing: "0.4px", marginTop: 1
-                    }}>
-                      {link.label}
-                    </div>
+                      fontFamily: "'Outfit', sans-serif",
+                      fontSize: 10.5, fontWeight: 500,
+                      color: active ? "rgba(255,255,255,0.38)" : "var(--muted)",
+                      letterSpacing: "0.8px", textTransform: "uppercase", marginTop: 1.5
+                    }}>{link.provider}</div>
                   </div>
 
-                  {/* Active dot */}
-                  {active && (
+                  {/* Trailing */}
+                  {active ? (
                     <div style={{
-                      width: 7, height: 7, borderRadius: "50%",
-                      background: "#4ade80",
-                      boxShadow: "0 0 6px rgba(74,222,128,0.8)",
-                      flexShrink: 0
+                      width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+                      background: "var(--green)",
+                      boxShadow: "0 0 10px rgba(0,200,117,0.85)"
                     }} />
-                  )}
-
-                  {/* Chevron */}
-                  {!active && (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                         stroke="#cbd5e1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                         style={{ flexShrink: 0 }}>
+                  ) : (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                         stroke="var(--muted)" strokeWidth="2.5"
+                         strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                       <path d="M9 18l6-6-6-6" />
                     </svg>
                   )}
@@ -307,46 +413,62 @@ export default function Navbar() {
             })}
           </div>
 
-          {/* ── Sign Out — the unforgettable button ───────────── */}
-          <button
-            onClick={handleLogout}
-            className="logout-btn"
-            style={{
-              width: "100%",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-              padding: "16px",
-              background: "#fff",
-              border: "1.5px solid #fca5a5",
-              borderRadius: 14,
-              cursor: "pointer",
-              transition: "all 0.2s cubic-bezier(0.4,0,0.2,1)",
-              boxShadow: "0 1px 3px rgba(239,68,68,0.08)"
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = "#fff1f2";
-              e.currentTarget.style.borderColor = "#f87171";
-              e.currentTarget.style.boxShadow = "0 4px 16px rgba(239,68,68,0.15)";
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = "#fff";
-              e.currentTarget.style.borderColor = "#fca5a5";
-              e.currentTarget.style.boxShadow = "0 1px 3px rgba(239,68,68,0.08)";
-            }}
-          >
-            {/* Exit icon — single stroke, clean */}
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
-                 stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            <span style={{
-              fontSize: 15, fontWeight: 600,
-              color: "#ef4444", letterSpacing: "-0.1px"
-            }}>
-              Sign Out
-            </span>
-          </button>
+          {/* ── Sign Out ─────────────────────────────────────────── */}
+          {/*
+           * Apple's destructive pattern: restraint IS the signal.
+           * No red background. No icon overload. Just the iOS red
+           * on white — and one pulse ring that fires once.
+           * The user FEELS the weight of this button before they tap it.
+           */}
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+            <button
+              onClick={handleLogout}
+              className="cc-pressable cc-logout-ring"
+              style={{
+                width: "100%",
+                padding: "15px",
+                background: "var(--card)",
+                border: "1.5px solid rgba(255,59,48,0.25)",
+                borderRadius: "var(--r-md)",
+                cursor: "pointer",
+                display: "flex", alignItems: "center",
+                justifyContent: "center", gap: 8,
+                transition: "all 0.22s ease",
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background      = "#FFF5F4";
+                e.currentTarget.style.borderColor     = "rgba(255,59,48,0.5)";
+                e.currentTarget.style.boxShadow       = "0 4px 20px rgba(255,59,48,0.12)";
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background  = "var(--card)";
+                e.currentTarget.style.borderColor = "rgba(255,59,48,0.25)";
+                e.currentTarget.style.boxShadow   = "none";
+              }}
+              onTouchStart={e => {
+                e.currentTarget.style.background  = "#FFF5F4";
+                e.currentTarget.style.borderColor = "rgba(255,59,48,0.5)";
+              }}
+              onTouchEnd={e => {
+                e.currentTarget.style.background  = "var(--card)";
+                e.currentTarget.style.borderColor = "rgba(255,59,48,0.25)";
+              }}
+            >
+              {/* Door-exit icon — clean, 2px stroke */}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                   stroke="#FF3B30" strokeWidth="2"
+                   strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span style={{
+                fontFamily: "'Syne', sans-serif",
+                fontSize: 14.5, fontWeight: 600,
+                color: "#FF3B30", letterSpacing: "0.1px"
+              }}>Sign Out</span>
+            </button>
+          </div>
 
         </div>
       </div>
