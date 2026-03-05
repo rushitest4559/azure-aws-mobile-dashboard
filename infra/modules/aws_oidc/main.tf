@@ -58,3 +58,111 @@ resource "aws_iam_role_policy" "s3_read_access" {
     ]
   })
 }
+
+# NEW: EC2 Read Access
+resource "aws_iam_role_policy" "ec2_read_access" {
+  name = "EC2ReadOnlyAccess"
+  role = aws_iam_role.azure_function_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeInstances",
+          "ec2:DescribeInstanceTypes",
+          "ec2:DescribeRegions",
+          "ec2:DescribeAvailabilityZones",
+          "ec2:DescribeImages"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# NEW: RDS Read Access  
+resource "aws_iam_role_policy" "rds_read_access" {
+  name = "RDSReadOnlyAccess"
+  role = aws_iam_role.azure_function_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "rds:DescribeDBInstances",
+          "rds:DescribeDBClusters",
+          "rds:ListTagsForResource",
+          "rds:DescribeDBSubnetGroups",
+          "rds:DescribeDBSecurityGroups"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeRegions",
+          "ec2:DescribeAvailabilityZones"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# NEW: EKS Read Access
+resource "aws_iam_role_policy" "eks_read_access" {
+  name = "EKSReadOnlyAccess"
+  role = aws_iam_role.azure_function_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "eks:DescribeCluster",
+          "eks:ListClusters",
+          "eks:ListTagsForCluster",
+          "eks:DescribeAddon",
+          "eks:ListAddons"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "eks:AccessKubernetesApi"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "eks:arn" = "arn:aws:eks:*:*:cluster/*"
+          }
+        }
+      }
+    ]
+  })
+}
+
+# NEW: Supporting Services (Regions, etc.)
+resource "aws_iam_role_policy" "supporting_services" {
+  name = "AWSSupportingServicesRead"
+  role = aws_iam_role.azure_function_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeRegions"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
