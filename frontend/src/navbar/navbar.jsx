@@ -165,11 +165,13 @@ export default function Navbar() {
         backdropFilter:         "blur(28px)",
         WebkitBackdropFilter:   "blur(28px)",
         borderBottom: "1px solid var(--border)",
+        overflow: "hidden",          /* ← kills horizontal bleed */
       }}>
         <div style={{
           maxWidth: 680, margin: "0 auto", padding: "0 18px",
           height: "100%", display: "flex",
-          alignItems: "center", justifyContent: "space-between"
+          alignItems: "center", justifyContent: "space-between",
+          minWidth: 0,               /* ← flex children can shrink */
         }}>
 
           {/* Brand */}
@@ -194,7 +196,7 @@ export default function Navbar() {
           </Link>
 
           {/* Right: avatar pill + menu button */}
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
 
             {/* Avatar pill */}
             <div style={{
@@ -203,12 +205,15 @@ export default function Navbar() {
               background: "var(--card)",
               border: "1px solid var(--border)",
               borderRadius: 99,
-              boxShadow: "var(--s-card)"
+              boxShadow: "var(--s-card)",
+              minWidth: 0, maxWidth: "38vw",   /* ← clamp on tiny screens */
+              overflow: "hidden",
             }}>
               <div style={{
                 width: 24, height: 24, borderRadius: "50%",
                 background: "var(--ink)",
                 display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0,
               }}>
                 <span style={{
                   fontFamily: "'Syne', sans-serif",
@@ -218,7 +223,7 @@ export default function Navbar() {
               <span style={{
                 fontFamily: "'Outfit', sans-serif",
                 fontSize: 13, fontWeight: 500, color: "var(--ink-soft)",
-                maxWidth: 68, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis"
+                overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
               }}>{firstName}</span>
             </div>
 

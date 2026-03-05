@@ -86,7 +86,7 @@ export default function Home() {
     <>
       {/* ── Global styles (tokens match Navbar exactly) ─────────────── */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap');
 
         :root {
           --ink:       #0A0F1E;
@@ -236,7 +236,14 @@ export default function Home() {
             margin: "0 0 18px",
             position: "relative", zIndex: 1,
           }}>
-            Your cloud,<br />
+            {/* Serif for the soft line — warmth and editorial gravitas */}
+            <span style={{
+              fontFamily: "'DM Serif Display', Georgia, serif",
+              fontWeight: 400,
+              fontStyle: "italic",
+              letterSpacing: "-0.5px",
+            }}>Your cloud,</span>
+            <br />
             <span style={{
               background: "linear-gradient(135deg, var(--accent) 0%, #6366F1 100%)",
               WebkitBackgroundClip: "text",
