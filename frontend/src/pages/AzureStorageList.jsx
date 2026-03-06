@@ -5,6 +5,12 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { secureFetch } from '../api';
 import { useNavigate } from 'react-router-dom';
 
+/*
+ * AzureStorageList — Cloud Control
+ * Design: identical tokens/layout to EksList
+ * Logic: unchanged
+ */
+
 const AzureStorageList = () => {
     const navigate = useNavigate();
     const subscriptionId = import.meta.env.VITE_AZURE_SUBSCRIPTION_ID || '';
@@ -13,7 +19,7 @@ const AzureStorageList = () => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [aiSummary, setAiSummary] = useState(null);
 
-    // 🔄 Load cached data from localStorage on mount
+    // ── Logic untouched ──────────────────────────────────────────────
     const getCachedData = useCallback(() => {
         try {
             const cached = localStorage.getItem(`azureStorageCache_${subscriptionId}`);
@@ -23,7 +29,6 @@ const AzureStorageList = () => {
         }
     }, [subscriptionId]);
 
-    // 💾 Save data to localStorage
     const saveToCache = useCallback((data) => {
         try {
             localStorage.setItem(`azureStorageCache_${subscriptionId}`, JSON.stringify({
@@ -35,7 +40,6 @@ const AzureStorageList = () => {
         }
     }, [subscriptionId]);
 
-    // Restore scroll position
     useEffect(() => {
         const savedScrollPosition = sessionStorage.getItem('azureStorageListScrollPosition');
         if (savedScrollPosition) {
@@ -49,38 +53,30 @@ const AzureStorageList = () => {
         navigate(`/azure/storage/details/${account.name}?subscription_id=${subscriptionId}&resource_group=${account.resource_group}`);
     };
 
-    // 🚫 DISABLE AUTO-FETCH - Only manual sync
     const { data: accounts = [], refetch, isFetching, error, isError } = useQuery({
         queryKey: ['azureStorageAccounts', subscriptionId],
         queryFn: async () => {
             if (!subscriptionId) throw new Error('Subscription ID required');
-
             const res = await secureFetch(
                 `${import.meta.env.VITE_API_URL}/azure/storage/list?subscription_id=${subscriptionId}`
             );
-
-            if (!res.ok) {
-                throw new Error(`Failed to fetch Azure Storage accounts: ${res.statusText}`);
-            }
-
+            if (!res.ok) throw new Error(`Failed to fetch Azure Storage accounts: ${res.statusText}`);
             const data = await res.json();
-            saveToCache(data); // 💾 Auto-save on successful fetch
+            saveToCache(data);
             return data;
         },
-        enabled: false, // 🚫 NEVER auto-fetch
+        enabled: false,
         staleTime: Infinity,
         cacheTime: Infinity,
         retry: false,
     });
 
-    // 🎯 Load cached data immediately for instant UI
     const cachedData = getCachedData();
     const displayAccounts = cachedData?.data || accounts;
 
     const generateAISummary = async () => {
         setIsGenerating(true);
         setShowSummary(true);
-
         try {
             const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
             const accountData = displayAccounts.map(account => ({
@@ -125,198 +121,456 @@ Format your response as:
                 setAiSummary([
                     text.trim() || `${displayAccounts.length} storage accounts analyzed`,
                     'Review regional distribution for latency optimization',
-                    'Consider SKU consolidation for cost savings'
+                    'Consider SKU consolidation for cost savings',
                 ]);
             }
-
         } catch (error) {
             console.error('AI Summary generation failed:', error);
             const totalAccounts = displayAccounts.length;
             const uniqueRegions = new Set(displayAccounts.map(a => a.location)).size;
             const uniqueSkus = new Set(displayAccounts.map(a => a.sku)).size;
-
             setAiSummary([
                 `${totalAccounts} Storage accounts across ${uniqueRegions} regions`,
                 `${uniqueSkus} different SKU types detected`,
-                `Resource groups: ${new Set(displayAccounts.map(a => a.resource_group)).size}`
+                `Resource groups: ${new Set(displayAccounts.map(a => a.resource_group)).size}`,
             ]);
         } finally {
             setIsGenerating(false);
         }
     };
+    // ── End logic ────────────────────────────────────────────────────
 
     return (
-        <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-            {/* Header */}
-            <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-xl border-b border-gray-100">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-16 sm:h-20">
-                        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
-                            Azure Storage Accounts {displayAccounts.length > 0 && (
-                                <span className="text-sm text-gray-500 font-normal ml-2">
-                                    ({displayAccounts.length})
-                                </span>
+        <>
+            <style>{`
+                @import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+
+                :root {
+                    --font-display: 'Figtree', -apple-system, sans-serif;
+                    --font-body:    'Plus Jakarta Sans', -apple-system, sans-serif;
+                    --ink:      #0A0F1E;
+                    --ink-soft: #1E2A3B;
+                    --surface:  #F5F7FA;
+                    --card:     #FFFFFF;
+                    --border:   rgba(10,15,30,0.08);
+                    --accent:   #0066FF;
+                    --green:    #00C875;
+                    --muted:    #8A95A8;
+                    --s-card:   0 2px 12px rgba(10,15,30,0.06);
+                    --s-lift:   0 8px 28px rgba(10,15,30,0.12);
+                }
+
+                .az, .az * {
+                    font-family: var(--font-body);
+                    box-sizing: border-box;
+                    -webkit-tap-highlight-color: transparent;
+                }
+
+                @keyframes az-up {
+                    from { opacity:0; transform:translateY(14px); }
+                    to   { opacity:1; transform:translateY(0);    }
+                }
+                .az-enter { animation: az-up 0.44s cubic-bezier(0.22,1,0.36,1) both; }
+
+                @keyframes az-card {
+                    from { opacity:0; transform:translateY(16px) scale(0.99); }
+                    to   { opacity:1; transform:translateY(0)    scale(1);    }
+                }
+                .az-card { animation: az-card 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+
+                .az-press:active { transform:scale(0.97); transition:transform 0.1s ease; }
+
+                @keyframes az-spin { to { transform:rotate(360deg); } }
+                .az-spin { animation: az-spin 0.75s linear infinite; }
+
+                @keyframes az-rise {
+                    from { opacity:0; transform:translateY(20px); }
+                    to   { opacity:1; transform:translateY(0);    }
+                }
+                .az-rise { animation: az-rise 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+
+                @keyframes az-insight {
+                    from { opacity:0; transform:translateX(-8px); }
+                    to   { opacity:1; transform:translateX(0);    }
+                }
+                .az-insight { animation: az-insight 0.36s cubic-bezier(0.22,1,0.36,1) both; }
+
+                @keyframes az-shimmer {
+                    0%   { background-position:-200% center; }
+                    100% { background-position: 200% center; }
+                }
+                .az-shimmer-bar {
+                    background: linear-gradient(90deg, rgba(10,15,30,0.05) 25%, rgba(10,15,30,0.1) 50%, rgba(10,15,30,0.05) 75%);
+                    background-size: 200% 100%;
+                    animation: az-shimmer 1.6s ease-in-out infinite;
+                    border-radius: 6px;
+                }
+
+                @keyframes az-orb {
+                    0%,100% { transform:translate(-50%,-50%) scale(1);   opacity:0.45; }
+                    50%      { transform:translate(-50%,-50%) scale(1.1); opacity:0.65; }
+                }
+                .az-orb { animation: az-orb 7s ease-in-out infinite; }
+            `}</style>
+
+            {/* ── Page ─────────────────────────────────────────────────────── */}
+            <div className="az" style={{
+                minHeight: "100vh",
+                background: "var(--surface)",
+                paddingTop: 56,
+                overflowX: "hidden",
+            }}>
+                <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px 56px" }}>
+
+                    {/* ── Page header ───────────────────────────────────────── */}
+                    <div className="az-enter" style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        marginBottom: 22,
+                        animationDelay: "0s",
+                    }}>
+                        <div>
+                            <h1 style={{
+                                fontFamily: "var(--font-display)",
+                                fontSize: 20, fontWeight: 800,
+                                color: "var(--ink)", letterSpacing: "-0.7px",
+                                margin: 0, lineHeight: 1.2,
+                            }}>Storage Accounts</h1>
+                            {displayAccounts.length > 0 && (
+                                <div style={{
+                                    fontFamily: "var(--font-body)",
+                                    fontSize: 11.5, fontWeight: 500,
+                                    color: "var(--muted)", marginTop: 3,
+                                    letterSpacing: "0.1px",
+                                }}>
+                                    {displayAccounts.length} account{displayAccounts.length !== 1 ? 's' : ''} · Azure
+                                </div>
                             )}
-                        </h1>
+                        </div>
+
+                        {/* Sync */}
                         <button
                             onClick={() => refetch()}
                             disabled={isFetching || !subscriptionId}
-                            className="flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white rounded-full transition-all font-medium text-sm shadow-sm active:scale-95 disabled:active:scale-100"
-                            title="Sync from Azure (updates cache)"
+                            className="az-press"
+                            style={{
+                                display: "flex", alignItems: "center", gap: 7,
+                                padding: "9px 18px",
+                                background: isFetching ? "rgba(0,200,117,0.08)" : "var(--ink)",
+                                border: isFetching ? "1.5px solid rgba(0,200,117,0.3)" : "1.5px solid transparent",
+                                borderRadius: 99,
+                                cursor: (isFetching || !subscriptionId) ? "default" : "pointer",
+                                boxShadow: isFetching ? "none" : "0 2px 12px rgba(10,15,30,0.22)",
+                                transition: "all 0.22s ease",
+                                flexShrink: 0,
+                                opacity: !subscriptionId ? 0.45 : 1,
+                            }}
                         >
-                            <FaSync className={`text-xs ${isFetching ? 'animate-spin' : ''}`} />
-                            <span className="hidden sm:inline">{isFetching ? 'Syncing...' : 'Refresh'}</span>
-                            <span className="sm:hidden">{isFetching ? 'Syncing' : 'Sync'}</span>
+                            <FaSync
+                                className={isFetching ? "az-spin" : ""}
+                                style={{ fontSize: 11, color: isFetching ? "var(--green)" : "#fff" }}
+                            />
+                            <span style={{
+                                fontFamily: "var(--font-body)",
+                                fontSize: 13, fontWeight: 600,
+                                color: isFetching ? "var(--green)" : "#fff",
+                                letterSpacing: "0.1px",
+                            }}>
+                                {isFetching ? "Syncing" : "Sync"}
+                            </span>
                         </button>
                     </div>
-                    {/* ✅ REMOVE the yellow warning banner - no longer needed */}
-                    {/* {!subscriptionId && ( ... )} */}
-                </div>
-            </div>
 
-
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-                {/* Show cached data count for AI insights */}
-                {displayAccounts.length > 0 && (
-                    <div className="mb-6">
-                        {!showSummary ? (
-                            <button
-                                onClick={generateAISummary}
-                                disabled={isGenerating}
-                                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:from-purple-300 disabled:to-indigo-300 text-white rounded-2xl p-4 flex items-center justify-center gap-3 transition-all shadow-sm active:scale-[0.99]"
-                            >
-                                <FaRobot className="text-lg" />
-                                <span className="font-medium">
-                                    Generate AI Insights ({displayAccounts.length} accounts)
-                                </span>
-                            </button>
-                        ) : (
-                            // AI Summary component
-                            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <FaRobot className="text-purple-600" />
-                                        <h2 className="text-sm font-semibold text-gray-900">AI Insights</h2>
+                    {/* ── AI Insights ───────────────────────────────────────── */}
+                    {displayAccounts.length > 0 && (
+                        <div className="az-enter" style={{ marginBottom: 18, animationDelay: "0.07s" }}>
+                            {!showSummary ? (
+                                <button
+                                    onClick={generateAISummary}
+                                    disabled={isGenerating}
+                                    className="az-press"
+                                    style={{
+                                        width: "100%",
+                                        display: "flex", alignItems: "center", gap: 12,
+                                        padding: "13px 16px",
+                                        background: "var(--card)",
+                                        border: "1px solid var(--border)",
+                                        borderRadius: 16,
+                                        cursor: "pointer",
+                                        boxShadow: "var(--s-card)",
+                                        textAlign: "left",
+                                        transition: "box-shadow 0.2s, border-color 0.2s",
+                                    }}
+                                    onMouseEnter={e => {
+                                        e.currentTarget.style.boxShadow   = "var(--s-lift)";
+                                        e.currentTarget.style.borderColor = "rgba(0,200,117,0.28)";
+                                    }}
+                                    onMouseLeave={e => {
+                                        e.currentTarget.style.boxShadow   = "var(--s-card)";
+                                        e.currentTarget.style.borderColor = "var(--border)";
+                                    }}
+                                >
+                                    <div style={{
+                                        width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                                        background: "rgba(0,200,117,0.1)",
+                                        border: "1px solid rgba(0,200,117,0.2)",
+                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                    }}>
+                                        <FaRobot style={{ fontSize: 14, color: "var(--green)" }} />
                                     </div>
-                                    <button
-                                        onClick={() => {
-                                            setShowSummary(false);
-                                            setAiSummary(null);
-                                        }}
-                                        className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
-                                    >
-                                        Close
-                                    </button>
-                                </div>
-                                <div className="p-4">
-                                    {isGenerating ? (
-                                        <div className="flex flex-col items-center justify-center py-8">
-                                            <FaSpinner className="text-3xl text-purple-600 animate-spin mb-3" />
-                                            <p className="text-sm text-gray-500">Analyzing your storage accounts...</p>
-                                        </div>
-                                    ) : aiSummary ? (
-                                        <div className="space-y-3">
-                                            {aiSummary.map((insight, index) => (
-                                                <div key={index} className="flex items-start gap-3">
-                                                    <div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                                        <span className="text-xs font-semibold text-purple-600">
-                                                            {index + 1}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-sm text-gray-700 flex-1">{insight}</p>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : null}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{
+                                            fontFamily: "var(--font-display)",
+                                            fontSize: 14, fontWeight: 700,
+                                            color: "var(--ink)", letterSpacing: "-0.2px",
+                                        }}>AI Insights</div>
+                                        <div style={{
+                                            fontFamily: "var(--font-body)",
+                                            fontSize: 12, color: "var(--muted)", marginTop: 1,
+                                        }}>Analyze {displayAccounts.length} account{displayAccounts.length !== 1 ? 's' : ''} with Gemini</div>
+                                    </div>
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                                         stroke="var(--muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M9 18l6-6-6-6"/>
+                                    </svg>
+                                </button>
 
-                {/* No cached data */}
-                {!isFetching && displayAccounts.length === 0 ? (
-                    <div className="text-center py-16 sm:py-20">
-                        <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-full mb-4">
-                            <FaDatabase className="text-2xl sm:text-3xl text-gray-400" />
-                        </div>
-                        <p className="text-base sm:text-lg font-medium text-gray-900 mb-1">No Storage Accounts</p>
-                        <p className="text-sm text-gray-500 mb-4">
-                            Press sync to load Azure Storage accounts
-                        </p>
-                        <div className="text-xs text-gray-400">
-                            Data loads instantly from cache after first sync
-                        </div>
-                    </div>
-                ) : (
-                    <>
-                        {/* Desktop Table */}
-                        <div className="hidden lg:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                            <table className="w-full">
-                                <thead>
-                                    <tr className="bg-gray-50 border-b border-gray-100">
-                                        <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Account Name</th>
-                                        <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Location</th>
-                                        <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">SKU</th>
-                                        <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kind</th>
-                                        <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Resource Group</th>
-                                        <th className="text-right px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {displayAccounts.map(account => (
-                                        <tr key={account.id || account.name} onClick={() => handleNavigate(account)} className="hover:bg-purple-50/50 cursor-pointer transition-colors">
-                                            <td className="px-6 py-4 font-medium text-gray-900">{account.name}</td>
-                                            <td className="px-6 py-4 text-gray-600">{account.location}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-600">{account.sku}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-600">{account.kind}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-500 truncate max-w-[150px]">{account.resource_group}</td>
-                                            <td className="px-6 py-4 text-right">
-                                                <button className="text-purple-600 hover:text-purple-700 font-medium text-sm">Details</button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Mobile Cards */}
-                        <div className="lg:hidden space-y-3">
-                            {displayAccounts.map(account => (
-                                <div key={account.id || account.name} onClick={() => handleNavigate(account)} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden active:scale-[0.98] transition-transform">
-                                    <div className="px-4 py-3.5 border-b border-gray-50">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div className="flex-1 min-w-0">
-                                                <h3 className="font-semibold text-gray-900 truncate mb-1">{account.name}</h3>
-                                                <p className="text-xs text-gray-500 truncate">{account.location} • {account.sku}</p>
+                            ) : (
+                                <div className="az-rise" style={{
+                                    background: "var(--card)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: 16,
+                                    boxShadow: "var(--s-lift)",
+                                    overflow: "hidden",
+                                }}>
+                                    {/* Header */}
+                                    <div style={{
+                                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                                        padding: "13px 15px",
+                                        borderBottom: "1px solid var(--border)",
+                                    }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                                            <div style={{
+                                                width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                                                background: "rgba(0,200,117,0.1)",
+                                                border: "1px solid rgba(0,200,117,0.2)",
+                                                display: "flex", alignItems: "center", justifyContent: "center",
+                                            }}>
+                                                {isGenerating
+                                                    ? <FaSpinner className="az-spin" style={{ fontSize: 11, color: "var(--green)" }} />
+                                                    : <FaRobot style={{ fontSize: 11, color: "var(--green)" }} />
+                                                }
+                                            </div>
+                                            <div>
+                                                <div style={{
+                                                    fontFamily: "var(--font-display)",
+                                                    fontSize: 13, fontWeight: 700,
+                                                    color: "var(--ink)", letterSpacing: "-0.2px",
+                                                }}>AI Insights</div>
+                                                <div style={{
+                                                    fontFamily: "var(--font-body)",
+                                                    fontSize: 10.5, color: "var(--muted)",
+                                                }}>{isGenerating ? "Analyzing…" : "Powered by Gemini"}</div>
                                             </div>
                                         </div>
+                                        <button
+                                            onClick={() => { setShowSummary(false); setAiSummary(null); }}
+                                            style={{
+                                                background: "var(--surface)", border: "1px solid var(--border)",
+                                                borderRadius: 8, padding: "4px 10px", cursor: "pointer",
+                                                fontFamily: "var(--font-body)",
+                                                fontSize: 11, fontWeight: 600, color: "var(--muted)",
+                                            }}
+                                        >Done</button>
                                     </div>
-                                    <div className="px-4 py-3 space-y-2">
-                                        <div className="flex items-center justify-between text-sm">
-                                            <span className="text-gray-500">Kind</span>
-                                            <span className="font-medium text-gray-900">{account.kind}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between text-sm">
-                                            <span className="text-gray-500">Resource Group</span>
-                                            <span className="font-medium text-gray-900 truncate max-w-[120px]">{account.resource_group}</span>
+
+                                    {/* Body */}
+                                    <div style={{ padding: "14px 15px" }}>
+                                        {isGenerating ? (
+                                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                                {[90, 72, 55].map((w, i) => (
+                                                    <div key={i} className="az-shimmer-bar" style={{ height: 13, width: `${w}%` }} />
+                                                ))}
+                                            </div>
+                                        ) : aiSummary ? (
+                                            <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+                                                {aiSummary.map((insight, i) => (
+                                                    <div key={i} className="az-insight"
+                                                         style={{ display: "flex", alignItems: "flex-start", gap: 11, animationDelay: `${i * 0.09}s` }}>
+                                                        <div style={{
+                                                            width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
+                                                            background: "rgba(0,200,117,0.1)",
+                                                            border: "1px solid rgba(0,200,117,0.2)",
+                                                            display: "flex", alignItems: "center", justifyContent: "center",
+                                                            marginTop: 1,
+                                                        }}>
+                                                            <span style={{
+                                                                fontFamily: "var(--font-display)",
+                                                                fontSize: 9, fontWeight: 700, color: "var(--green)",
+                                                            }}>{i + 1}</span>
+                                                        </div>
+                                                        <p style={{
+                                                            fontFamily: "var(--font-body)",
+                                                            fontSize: 13, fontWeight: 400,
+                                                            color: "var(--ink-soft)", lineHeight: 1.6, margin: 0, flex: 1,
+                                                        }}>{insight}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── Empty state ───────────────────────────────────────── */}
+                    {!isFetching && displayAccounts.length === 0 ? (
+                        <div className="az-enter" style={{
+                            display: "flex", flexDirection: "column",
+                            alignItems: "center", justifyContent: "center",
+                            padding: "72px 24px", textAlign: "center",
+                            position: "relative", animationDelay: "0.1s",
+                        }}>
+                            <div className="az-orb" style={{
+                                position: "absolute", top: "50%", left: "50%",
+                                width: 260, height: 160,
+                                background: "radial-gradient(ellipse, rgba(0,102,255,0.08) 0%, transparent 70%)",
+                                pointerEvents: "none",
+                            }} />
+                            <div style={{
+                                width: 56, height: 56, borderRadius: 16,
+                                background: "var(--card)", border: "1px solid var(--border)",
+                                boxShadow: "var(--s-card)",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                marginBottom: 16, position: "relative",
+                            }}>
+                                <FaDatabase style={{ fontSize: 20, color: "var(--muted)" }} />
+                            </div>
+                            <div style={{
+                                fontFamily: "var(--font-display)",
+                                fontSize: 16, fontWeight: 700,
+                                color: "var(--ink)", letterSpacing: "-0.3px", marginBottom: 7,
+                            }}>No storage accounts yet</div>
+                            <div style={{
+                                fontFamily: "var(--font-body)",
+                                fontSize: 13, color: "var(--muted)",
+                                lineHeight: 1.6, maxWidth: 220, marginBottom: 5,
+                            }}>Hit Sync to pull your Azure Storage accounts</div>
+                            <div style={{
+                                fontFamily: "var(--font-body)",
+                                fontSize: 11, color: "var(--muted)", opacity: 0.55,
+                            }}>Loads instantly from cache after first sync</div>
+                        </div>
+
+                    ) : (
+                        /* ── Account cards ──────────────────────────────────── */
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            {displayAccounts.map((account, i) => (
+                                <div
+                                    key={account.id || account.name}
+                                    onClick={() => handleNavigate(account)}
+                                    className="az-card az-press"
+                                    style={{
+                                        animationDelay: `${0.1 + i * 0.05}s`,
+                                        background: "var(--card)",
+                                        border: "1px solid var(--border)",
+                                        borderRadius: 16,
+                                        boxShadow: "var(--s-card)",
+                                        overflow: "hidden",
+                                        cursor: "pointer",
+                                        transition: "box-shadow 0.2s, border-color 0.2s",
+                                    }}
+                                    onMouseEnter={e => {
+                                        e.currentTarget.style.boxShadow   = "var(--s-lift)";
+                                        e.currentTarget.style.borderColor = "rgba(10,15,30,0.13)";
+                                    }}
+                                    onMouseLeave={e => {
+                                        e.currentTarget.style.boxShadow   = "var(--s-card)";
+                                        e.currentTarget.style.borderColor = "var(--border)";
+                                    }}
+                                >
+                                    {/* Main content */}
+                                    <div style={{ padding: "14px 15px 12px", display: "flex", alignItems: "flex-start", gap: 12 }}>
+
+                                        {/* Accent left bar — blue for Azure */}
+                                        <div style={{
+                                            width: 3, alignSelf: "stretch", minHeight: 36,
+                                            borderRadius: 2, flexShrink: 0,
+                                            background: "var(--accent)",
+                                            boxShadow: "0 0 8px rgba(0,102,255,0.4)",
+                                        }} />
+
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            {/* Name + SKU pill */}
+                                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 5 }}>
+                                                <div style={{
+                                                    fontFamily: "var(--font-display)",
+                                                    fontSize: 14.5, fontWeight: 700,
+                                                    color: "var(--ink)", letterSpacing: "-0.3px",
+                                                    overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
+                                                }}>{account.name}</div>
+
+                                                <div style={{
+                                                    display: "flex", alignItems: "center", gap: 5,
+                                                    padding: "3px 9px",
+                                                    background: "rgba(0,102,255,0.07)",
+                                                    border: "1px solid rgba(0,102,255,0.18)",
+                                                    borderRadius: 99, flexShrink: 0,
+                                                }}>
+                                                    <span style={{
+                                                        fontFamily: "var(--font-body)",
+                                                        fontSize: 11, fontWeight: 600,
+                                                        color: "var(--accent)", letterSpacing: "0.1px",
+                                                    }}>{account.sku || 'Standard'}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Location + resource group */}
+                                            <div style={{
+                                                fontFamily: "var(--font-body)",
+                                                fontSize: 12.5, color: "var(--muted)",
+                                                overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
+                                            }}>{account.location}{account.resource_group ? ` · ${account.resource_group}` : ''}</div>
                                         </div>
                                     </div>
-                                    <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xs text-gray-500">Tap to view details</span>
-                                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+
+                                    {/* Footer row */}
+                                    <div style={{
+                                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                                        padding: "9px 15px",
+                                        borderTop: "1px solid var(--border)",
+                                        background: "rgba(10,15,30,0.012)",
+                                    }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                            <span style={{
+                                                fontFamily: "var(--font-body)",
+                                                fontSize: 10.5, fontWeight: 600,
+                                                color: "var(--muted)", letterSpacing: "0.7px", textTransform: "uppercase",
+                                            }}>Kind</span>
+                                            <span style={{
+                                                fontFamily: "var(--font-display)",
+                                                fontSize: 12, fontWeight: 600, color: "var(--ink-soft)",
+                                            }}>{account.kind || '—'}</span>
+                                        </div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                            <span style={{
+                                                fontFamily: "var(--font-body)",
+                                                fontSize: 12, fontWeight: 600,
+                                                color: "var(--accent)",
+                                            }}>Details</span>
+                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                                                 stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M9 18l6-6-6-6"/>
                                             </svg>
                                         </div>
                                     </div>
                                 </div>
                             ))}
                         </div>
-                    </>
-                )}
+                    )}
+                </div>
             </div>
-        </div>
+        </>
     );
 };
 
