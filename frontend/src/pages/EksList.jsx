@@ -98,46 +98,53 @@ const EksList = () => {
   /* ── Start / stop elapsed counter alongside isFetching ─────────── */
   const startElapsed = () => {
     setDoneTime(null);
-    setElapsed(0);
+    setElapsed('0.0');
     syncStartRef.current = Date.now();
     elapsedRef.current = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - syncStartRef.current) / 1000));
+      const s = ((Date.now() - syncStartRef.current) / 1000).toFixed(1);
+      setElapsed(s);
     }, 100);
   };
 
-  const stopElapsed = () => {
-    if (elapsedRef.current) clearInterval(elapsedRef.current);
+  const stopElapsed = (success = true) => {
+    if (elapsedRef.current) {
+      clearInterval(elapsedRef.current);
+      elapsedRef.current = null;
+    }
     const total = syncStartRef.current
       ? ((Date.now() - syncStartRef.current) / 1000).toFixed(1)
       : null;
     setElapsed(null);
+    syncStartRef.current = null;
     if (total) {
-      setDoneTime(total);
-      // fade the "done" badge out after 4 s
-      setTimeout(() => setDoneTime(null), 4000);
+      setDoneTime({ value: total, success });
+      setTimeout(() => setDoneTime(null), 5000);
     }
   };
 
-  const { data: clusters = [], refetch, isFetching, error, isError } = useQuery({
+  const { data: clusters = [], refetch, isFetching, isError } = useQuery({
     queryKey: ['eksClusters'],
     queryFn: async () => {
-      const res = await secureFetch(`${import.meta.env.VITE_API_URL}/aws/eks/list`);
-      if (!res.ok) throw new Error(`Failed to fetch EKS clusters: ${res.statusText}`);
-      const data = await res.json();
-      saveToCache(data);
-      return data;
+      try {
+        const res = await secureFetch(`${import.meta.env.VITE_API_URL}/aws/eks/list`);
+        if (!res.ok) throw new Error(`Failed to fetch EKS clusters: ${res.statusText}`);
+        const data = await res.json();
+        saveToCache(data);
+        // ✅ success path — set timestamp + stop timer HERE
+        setLastUpdated(Date.now());
+        stopElapsed(true);
+        return data;
+      } catch (err) {
+        // ✅ error path — still record the attempt
+        setLastUpdated(Date.now());
+        stopElapsed(false);
+        throw err;
+      }
     },
     enabled:   false,
     staleTime: Infinity,
-    cacheTime: Infinity,
+    gcTime:    Infinity,   // v5 renamed cacheTime → gcTime
     retry:     false,
-    onSuccess: () => {
-      setLastUpdated(Date.now());
-      stopElapsed();
-    },
-    onError: () => {
-      stopElapsed();
-    },
   });
 
   const cachedData      = getCachedData();
@@ -232,7 +239,6 @@ Format your response as:
             color: "var(--green)",
             letterSpacing: "0.1px",
           }}>Syncing</span>
-          {/* live counter badge */}
           <span style={{
             fontFamily: "'SF Mono', 'Fira Code', monospace",
             fontSize: 11, fontWeight: 700,
@@ -245,26 +251,6 @@ Format your response as:
             minWidth: 32,
             textAlign: "center",
           }}>{elapsed}s</span>
-        </span>
-      );
-    }
-    if (doneTime) {
-      return (
-        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{
-            fontFamily: "var(--font-body)",
-            fontSize: 13, fontWeight: 600, color: "#fff",
-            letterSpacing: "0.1px",
-          }}>Sync</span>
-          <span style={{
-            fontFamily: "'SF Mono', 'Fira Code', monospace",
-            fontSize: 11, fontWeight: 700,
-            color: "rgba(255,255,255,0.55)",
-            background: "rgba(255,255,255,0.1)",
-            borderRadius: 6,
-            padding: "1px 6px",
-            letterSpacing: "0.5px",
-          }}>✓ {doneTime}s</span>
         </span>
       );
     }
@@ -411,6 +397,20 @@ Format your response as:
           transform: scale(0.96);
           transition: transform 0.1s ease;
         }
+
+        /* ── Latency badge — drops in below sync button ────────── */
+        @keyframes lat-drop {
+          from { opacity:0; transform:translateY(-6px) scale(0.94); }
+          to   { opacity:1; transform:translateY(0)    scale(1);    }
+        }
+        @keyframes lat-out {
+          0%,70% { opacity:1; }
+          100%   { opacity:0; transform:translateY(4px); }
+        }
+        .lat-badge {
+          animation: lat-drop 0.32s cubic-bezier(0.34,1.4,0.64,1) both,
+                     lat-out  5s ease-in-out 0.1s forwards;
+        }
       `}</style>
 
       {/* ── Page — starts right below navbar (paddingTop:56) ─────────── */}
@@ -424,7 +424,7 @@ Format your response as:
 
           {/* ── Page header ───────────────────────────────────────── */}
           <div className="ek-enter" style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
+            display: "flex", alignItems: "flex-start", justifyContent: "space-between",
             marginBottom: 22,
             animationDelay: "0s",
           }}>
@@ -450,8 +450,8 @@ Format your response as:
                   </div>
                 )}
 
-                {/* ── Last-updated flip pill ─────────────────────── */}
-                {lastUpdated && (
+                {/* ── Last-updated flip pill — shows after ANY sync ── */}
+                {lastUpdated ? (
                   <div
                     className="ts-wrap ts-pill"
                     onClick={handleFlip}
@@ -470,7 +470,6 @@ Format your response as:
                       {/* Face A — absolute */}
                       {!showRelative && (
                         <div className="ts-face" style={{ whiteSpace: "nowrap" }}>
-                          {/* dot */}
                           <div style={{
                             width: 5, height: 5, borderRadius: "50%",
                             background: "var(--green)",
@@ -510,34 +509,79 @@ Format your response as:
 
                     </div>
                   </div>
+                ) : (
+                  /* Pre-sync hint */
+                  <div style={{
+                    fontFamily: "var(--font-body)",
+                    fontSize: 11, color: "var(--muted)", opacity: 0.5,
+                    letterSpacing: "0.1px",
+                  }}>Not synced yet</div>
                 )}
               </div>
             </div>
 
-            {/* ── Sync button ───────────────────────────────────── */}
-            <button
-              onClick={handleSync}
-              disabled={isFetching}
-              className="sync-btn ek-press"
-              style={{
-                display: "flex", alignItems: "center", gap: 7,
-                padding: "9px 18px",
-                background: isFetching ? "rgba(0,200,117,0.08)" : "var(--ink)",
-                border: isFetching
-                  ? "1.5px solid rgba(0,200,117,0.3)"
-                  : "1.5px solid transparent",
-                borderRadius: 99,
-                cursor: isFetching ? "default" : "pointer",
-                boxShadow: isFetching ? "none" : "0 2px 12px rgba(10,15,30,0.22)",
-                flexShrink: 0,
-              }}
-            >
-              <FaSync
-                className={isFetching ? "ek-spin" : ""}
-                style={{ fontSize: 11, color: isFetching ? "var(--green)" : "#fff" }}
-              />
-              {syncLabel()}
-            </button>
+            {/* ── Sync button + latency badge ───────────────────── */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+              <button
+                onClick={handleSync}
+                disabled={isFetching}
+                className="sync-btn"
+                style={{
+                  display: "flex", alignItems: "center", gap: 7,
+                  padding: "9px 18px",
+                  background: isFetching ? "rgba(0,200,117,0.08)" : "var(--ink)",
+                  border: isFetching
+                    ? "1.5px solid rgba(0,200,117,0.3)"
+                    : "1.5px solid transparent",
+                  borderRadius: 99,
+                  cursor: isFetching ? "default" : "pointer",
+                  boxShadow: isFetching ? "none" : "0 2px 12px rgba(10,15,30,0.22)",
+                }}
+              >
+                <FaSync
+                  className={isFetching ? "ek-spin" : ""}
+                  style={{ fontSize: 11, color: isFetching ? "var(--green)" : "#fff" }}
+                />
+                {syncLabel()}
+              </button>
+
+              {/* ── Latency badge — drops in right after sync done ── */}
+              {doneTime && (
+                <div className="lat-badge" style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  padding: "4px 10px",
+                  background: doneTime.success
+                    ? "rgba(0,200,117,0.08)"
+                    : "rgba(245,158,11,0.08)",
+                  border: `1px solid ${doneTime.success ? "rgba(0,200,117,0.22)" : "rgba(245,158,11,0.22)"}`,
+                  borderRadius: 99,
+                }}>
+                  {/* checkmark or warn icon */}
+                  {doneTime.success ? (
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
+                         stroke="#00C875" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  ) : (
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
+                         stroke="#F59E0B" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                  )}
+                  <span style={{
+                    fontFamily: "'SF Mono','Fira Code',monospace",
+                    fontSize: 10.5, fontWeight: 700,
+                    color: doneTime.success ? "var(--green)" : "#F59E0B",
+                    letterSpacing: "0.4px",
+                  }}>{doneTime.value}s</span>
+                  <span style={{
+                    fontFamily: "var(--font-body)",
+                    fontSize: 10, fontWeight: 500,
+                    color: "var(--muted)",
+                  }}>{doneTime.success ? "fetched" : "failed"}</span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* ── AI Insights ───────────────────────────────────────── */}
