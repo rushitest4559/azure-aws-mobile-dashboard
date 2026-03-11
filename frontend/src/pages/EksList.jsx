@@ -53,11 +53,17 @@ const EksList = () => {
   const [aiSummary,    setAiSummary]    = useState(null);
 
   /* ── NEW state ──────────────────────────────────────────────────── */
-  const [lastUpdated,   setLastUpdated]   = useState(null);   // epoch ms
-  const [showRelative,  setShowRelative]  = useState(false);  // flip state
-  const [isFlipping,    setIsFlipping]    = useState(false);  // flip anim
-  const [elapsed,       setElapsed]       = useState(null);   // seconds counter
-  const [doneTime,      setDoneTime]      = useState(null);   // final elapsed shown after sync
+  // Read last synced time from localStorage so it persists across sessions
+  const [lastUpdated,  setLastUpdated]  = useState(() => {
+    try {
+      const saved = localStorage.getItem('eksLastSynced');
+      return saved ? parseInt(saved, 10) : null;
+    } catch { return null; }
+  });
+  const [showRelative, setShowRelative] = useState(false);
+  const [isFlipping,   setIsFlipping]   = useState(false);
+  const [elapsed,      setElapsed]      = useState(null);
+  const [doneTime,     setDoneTime]     = useState(null);
   const elapsedRef = useRef(null);
   const syncStartRef = useRef(null);
 
@@ -95,7 +101,11 @@ const EksList = () => {
     navigate(`/aws/eks/details/${name}?region=${region}`);
   };
 
-  /* ── Start / stop elapsed counter alongside isFetching ─────────── */
+  /* ── Persist last-synced timestamp ─────────────────────────────── */
+  const saveLastSynced = useCallback((ts) => {
+    try { localStorage.setItem('eksLastSynced', String(ts)); } catch {}
+    setLastUpdated(ts);
+  }, []);
   const startElapsed = () => {
     setDoneTime(null);
     setElapsed('0.0');
@@ -131,12 +141,12 @@ const EksList = () => {
         const data = await res.json();
         saveToCache(data);
         // ✅ success path — set timestamp + stop timer HERE
-        setLastUpdated(Date.now());
+        saveLastSynced(Date.now());
         stopElapsed(true);
         return data;
       } catch (err) {
         // ✅ error path — still record the attempt
-        setLastUpdated(Date.now());
+        saveLastSynced(Date.now());
         stopElapsed(false);
         throw err;
       }
