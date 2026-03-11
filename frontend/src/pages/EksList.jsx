@@ -199,7 +199,7 @@ Format your response as:
 2. Second insight here
 3. Third insight here`;
 
-      const model  = genAI.getGenerativeModel({ model: "gemini-2.0-flash-preview" });
+      const model  = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
       const result = await model.generateContent(prompt);
       const text   = result.response.text();
 
