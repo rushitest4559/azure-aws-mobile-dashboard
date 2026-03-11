@@ -157,14 +157,9 @@ const EksList = () => {
     refetch();
   };
 
-  /* ── Flip handler (Apple spring feel via CSS perspective) ────────── */
   const handleFlip = () => {
-    if (isFlipping || !lastUpdated) return;
-    setIsFlipping(true);
-    setTimeout(() => {
-      setShowRelative(v => !v);
-      setIsFlipping(false);
-    }, 200); // mid-point of flip
+    if (!lastUpdated) return;
+    setShowRelative(v => !v);
   };
 
   const generateAISummary = async () => {
@@ -450,71 +445,49 @@ Format your response as:
                   </div>
                 )}
 
-                {/* ── Last-updated flip pill — shows after ANY sync ── */}
+                {/* ── Last-updated — shows after ANY sync ── */}
                 {lastUpdated ? (
                   <div
-                    className="ts-wrap ts-pill"
                     onClick={handleFlip}
                     style={{
-                      display: "inline-flex", alignItems: "center",
+                      display: "inline-flex", alignItems: "center", gap: 5,
                       background: "rgba(10,15,30,0.04)",
                       border: "1px solid rgba(10,15,30,0.09)",
                       borderRadius: 99,
-                      padding: "2px 9px",
-                      overflow: "hidden",
+                      padding: "3px 10px",
+                      cursor: "pointer",
+                      userSelect: "none",
+                      transition: "background 0.18s, border-color 0.18s",
                     }}
-                    title="Click to toggle view"
+                    title="Click to switch between exact time and relative time"
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(10,15,30,0.07)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "rgba(10,15,30,0.04)"}
                   >
-                    <div className={`ts-inner${isFlipping ? ' flipping' : ''}`}>
-
-                      {/* Face A — absolute */}
-                      {!showRelative && (
-                        <div className="ts-face" style={{ whiteSpace: "nowrap" }}>
-                          <div style={{
-                            width: 5, height: 5, borderRadius: "50%",
-                            background: "var(--green)",
-                            boxShadow: "0 0 6px var(--green)",
-                            flexShrink: 0,
-                          }} />
-                          <span style={{
-                            fontFamily: "'SF Mono','Fira Code',monospace",
-                            fontSize: 10.5, fontWeight: 600,
-                            color: "var(--ink-soft)",
-                            letterSpacing: "0.3px",
-                          }}>
-                            {formatAbsolute(lastUpdated)}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Face B — relative */}
-                      {showRelative && (
-                        <div className="ts-face" style={{ whiteSpace: "nowrap" }}>
-                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
-                               stroke="var(--muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                               style={{ flexShrink: 0 }}>
-                            <circle cx="12" cy="12" r="10"/>
-                            <polyline points="12 6 12 12 16 14"/>
-                          </svg>
-                          <span style={{
-                            fontFamily: "var(--font-body)",
-                            fontSize: 11, fontWeight: 600,
-                            color: "var(--muted)",
-                            letterSpacing: "0.1px",
-                          }}>
-                            {timeAgo(lastUpdated)}
-                          </span>
-                        </div>
-                      )}
-
-                    </div>
+                    {/* green dot */}
+                    <div style={{
+                      width: 5, height: 5, borderRadius: "50%", flexShrink: 0,
+                      background: "var(--green)",
+                      boxShadow: "0 0 5px var(--green)",
+                    }} />
+                    <span style={{
+                      fontFamily: showRelative ? "var(--font-body)" : "'SF Mono','Fira Code',monospace",
+                      fontSize: 11, fontWeight: 600,
+                      color: "var(--ink-soft)",
+                      letterSpacing: showRelative ? "0.1px" : "0.3px",
+                      whiteSpace: "nowrap",
+                    }}>
+                      {showRelative ? timeAgo(lastUpdated) : formatAbsolute(lastUpdated)}
+                    </span>
+                    {/* tap hint */}
+                    <span style={{
+                      fontSize: 9, color: "var(--muted)", opacity: 0.6,
+                      fontFamily: "var(--font-body)",
+                    }}>↕</span>
                   </div>
                 ) : (
-                  /* Pre-sync hint */
                   <div style={{
                     fontFamily: "var(--font-body)",
                     fontSize: 11, color: "var(--muted)", opacity: 0.5,
-                    letterSpacing: "0.1px",
                   }}>Not synced yet</div>
                 )}
               </div>
