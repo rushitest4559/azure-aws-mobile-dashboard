@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { FaDatabase, FaSync, FaExclamationTriangle, FaRobot, FaSpinner, FaCube } from 'react-icons/fa';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { secureFetch } from '../api';
-import EksChat from './EksChat'; // ← NEW
+import EksChat from './Ekschat'
 
 /*
  * EksList — Cloud Control
