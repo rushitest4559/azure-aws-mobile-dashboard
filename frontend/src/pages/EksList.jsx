@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { FaDatabase, FaSync, FaExclamationTriangle, FaRobot, FaSpinner, FaCube } from 'react-icons/fa';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { secureFetch } from '../api';
+import EksChat from './EksChat'; // ← NEW
 
 /*
  * EksList — Cloud Control
@@ -14,6 +15,7 @@ import { secureFetch } from '../api';
  * NEW:
  *  • Last-updated timestamp pill — click to flip between absolute & relative
  *  • Sync button shows a live seconds counter while fetching
+ *  • EksChat — floating AI chatbot for cluster Q&A (bottom-right FAB)
  */
 
 /* ── Relative-time helper ───────────────────────────────────────────── */
@@ -197,7 +199,7 @@ Format your response as:
 2. Second insight here
 3. Third insight here`;
 
-      const model  = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+      const model  = genAI.getGenerativeModel({ model: "gemini-2.0-flash-preview" });
       const result = await model.generateContent(prompt);
       const text   = result.response.text();
 
@@ -855,6 +857,9 @@ Format your response as:
           )}
         </div>
       </div>
+
+      {/* ── EksChat — floating AI chatbot ────────────────────────────── */}
+      <EksChat clusters={displayClusters} />
     </>
   );
 };
