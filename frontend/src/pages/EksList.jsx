@@ -41,7 +41,7 @@ function formatAbsolute(ts) {
   const day = d.toLocaleDateString('en-US', { weekday: 'short' }); // Mon
   const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); // Jun 12
   const time = d.toLocaleTimeString('en-US', {
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
   });
   return `${date} · ${day} · ${time}`;
 }
@@ -128,7 +128,7 @@ const EksList = () => {
     syncStartRef.current = null;
     if (total) {
       setDoneTime({ value: total, success });
-      setTimeout(() => setDoneTime(null), 5000);
+      setTimeout(() => setDoneTime(null), 60 * 60 * 1000); // 1 hour
     }
   };
 
