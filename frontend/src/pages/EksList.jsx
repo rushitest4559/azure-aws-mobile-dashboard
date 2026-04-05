@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { FaDatabase, FaSync, FaExclamationTriangle, FaRobot, FaSpinner, FaCube } from 'react-icons/fa';
+import { FaSync, FaRobot, FaSpinner, FaCube } from 'react-icons/fa';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { secureFetch } from '../api';
-import EksChat from './Ekschat'
 
 /*
  * EksList — Cloud Control
@@ -15,7 +14,6 @@ import EksChat from './Ekschat'
  * NEW:
  *  • Last-updated timestamp pill — click to flip between absolute & relative
  *  • Sync button shows a live seconds counter while fetching
- *  • EksChat — floating AI chatbot for cluster Q&A (bottom-right FAB)
  */
 
 /* ── Relative-time helper ───────────────────────────────────────────── */
@@ -63,7 +61,6 @@ const EksList = () => {
     } catch { return null; }
   });
   const [showRelative, setShowRelative] = useState(false);
-  const [isFlipping,   setIsFlipping]   = useState(false);
   const [elapsed,      setElapsed]      = useState(null);
   const [doneTime,     setDoneTime]     = useState(null);
   const elapsedRef = useRef(null);
@@ -108,6 +105,7 @@ const EksList = () => {
     try { localStorage.setItem('eksLastSynced', String(ts)); } catch {}
     setLastUpdated(ts);
   }, []);
+  
   const startElapsed = () => {
     setDoneTime(null);
     setElapsed('0.0');
@@ -857,9 +855,6 @@ Format your response as:
           )}
         </div>
       </div>
-
-      {/* ── EksChat — floating AI chatbot ────────────────────────────── */}
-      <EksChat clusters={displayClusters} />
     </>
   );
 };

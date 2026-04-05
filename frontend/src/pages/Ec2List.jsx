@@ -5,19 +5,12 @@ import { FaServer, FaSync, FaRobot, FaSpinner, FaCircle, FaPlay, FaPause } from 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { secureFetch } from '../api';
 
-/*
- * EC2List — Cloud Control
- * Design: identical tokens/layout to EksList
- * Logic: unchanged
- */
-
 const EC2List = () => {
   const navigate = useNavigate();
   const [showSummary, setShowSummary] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiSummary, setAiSummary] = useState(null);
 
-  // ── Logic untouched ──────────────────────────────────────────────
   const getCachedData = useCallback(() => {
     try {
       const cached = localStorage.getItem('ec2InstancesCache');
@@ -46,9 +39,9 @@ const EC2List = () => {
     }
   }, []);
 
-  const handleNavigate = (instanceId) => {
+  const handleNavigate = (instance) => {
     sessionStorage.setItem('ec2ListScrollPosition', window.scrollY.toString());
-    navigate(`/aws/ec2/details/${instanceId}`);
+    navigate(`/aws/ec2/details/${instance.instance_id}__${instance.region}`);
   };
 
   const { data: instances = [], refetch, isFetching, error, isError } = useQuery({
@@ -75,10 +68,10 @@ const EC2List = () => {
     try {
       const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
       const instanceData = displayInstances.map(instance => ({
-        id: instance.InstanceId,
-        state: instance.State?.Name,
-        type: instance.InstanceType,
-        region: instance.Placement?.AvailabilityZone?.split('-')[0],
+        id: instance.instance_id,           // ✅ fixed
+        state: instance.state,              // ✅ fixed
+        type: instance.instance_type,       // ✅ fixed
+        region: instance.region,            // ✅ fixed
       }));
 
       const prompt = `Analyze these EC2 instances and provide exactly 2-3 key insights (each insight one concise sentence under 20 words):
@@ -101,8 +94,6 @@ Format your response as:
       const response = await result.response;
       const text = response.text();
 
-      console.log('Gemini response:', text);
-
       const insights = text
         .split('\n')
         .filter(line => line.trim().match(/^\d+[\.)]/))
@@ -120,26 +111,17 @@ Format your response as:
       }
     } catch (error) {
       console.error('AI Summary generation failed:', error);
-      const runningCount = displayInstances.filter(i => i.State?.Name === 'running').length;
+      const runningCount = displayInstances.filter(i => i.state === 'running').length; // ✅ fixed
       const stoppedCount = displayInstances.length - runningCount;
       setAiSummary([
         `${displayInstances.length} EC2 instances (${runningCount} running, ${stoppedCount} stopped)`,
-        `Most common type: ${displayInstances.length > 0 ? displayInstances[0].InstanceType : 'N/A'}`,
+        `Most common type: ${displayInstances.length > 0 ? displayInstances[0].instance_type : 'N/A'}`, // ✅ fixed
         'Review instance utilization and right-sizing opportunities',
       ]);
     } finally {
       setIsGenerating(false);
     }
   };
-
-  const getStateIcon = (state) => {
-    switch (state?.toLowerCase()) {
-      case 'running': return <FaPlay className="text-green-500" />;
-      case 'stopped': return <FaPause className="text-orange-500" />;
-      default: return <FaCircle className="text-gray-400" />;
-    }
-  };
-  // ── End logic ────────────────────────────────────────────────────
 
   const statusCfg = (state) => {
     const s = state?.toLowerCase();
@@ -229,7 +211,6 @@ Format your response as:
         .ec-orb { animation: ec-orb 7s ease-in-out infinite; }
       `}</style>
 
-      {/* ── Page ─────────────────────────────────────────────────────── */}
       <div className="ec" style={{
         minHeight: "100vh",
         background: "var(--surface)",
@@ -238,11 +219,10 @@ Format your response as:
       }}>
         <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px 56px" }}>
 
-          {/* ── Page header ───────────────────────────────────────── */}
+          {/* ── Page header ── */}
           <div className="ec-enter" style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
-            marginBottom: 22,
-            animationDelay: "0s",
+            marginBottom: 22, animationDelay: "0s",
           }}>
             <div>
               <h1 style={{
@@ -253,17 +233,14 @@ Format your response as:
               }}>EC2 Instances</h1>
               {displayInstances.length > 0 && (
                 <div style={{
-                  fontFamily: "var(--font-body)",
                   fontSize: 11.5, fontWeight: 500,
-                  color: "var(--muted)", marginTop: 3,
-                  letterSpacing: "0.1px",
+                  color: "var(--muted)", marginTop: 3, letterSpacing: "0.1px",
                 }}>
                   {displayInstances.length} instance{displayInstances.length !== 1 ? 's' : ''} · AWS
                 </div>
               )}
             </div>
 
-            {/* Sync */}
             <button
               onClick={() => refetch()}
               disabled={isFetching}
@@ -285,17 +262,15 @@ Format your response as:
                 style={{ fontSize: 11, color: isFetching ? "var(--green)" : "#fff" }}
               />
               <span style={{
-                fontFamily: "var(--font-body)",
                 fontSize: 13, fontWeight: 600,
-                color: isFetching ? "var(--green)" : "#fff",
-                letterSpacing: "0.1px",
+                color: isFetching ? "var(--green)" : "#fff", letterSpacing: "0.1px",
               }}>
                 {isFetching ? "Syncing" : "Sync"}
               </span>
             </button>
           </div>
 
-          {/* ── AI Insights ───────────────────────────────────────── */}
+          {/* ── AI Insights ── */}
           {displayInstances.length > 0 && (
             <div className="ec-enter" style={{ marginBottom: 18, animationDelay: "0.07s" }}>
               {!showSummary ? (
@@ -338,10 +313,9 @@ Format your response as:
                       fontSize: 14, fontWeight: 700,
                       color: "var(--ink)", letterSpacing: "-0.2px",
                     }}>AI Insights</div>
-                    <div style={{
-                      fontFamily: "var(--font-body)",
-                      fontSize: 12, color: "var(--muted)", marginTop: 1,
-                    }}>Analyze {displayInstances.length} instance{displayInstances.length !== 1 ? 's' : ''} with Gemini</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 1 }}>
+                      Analyze {displayInstances.length} instance{displayInstances.length !== 1 ? 's' : ''} with Gemini
+                    </div>
                   </div>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                        stroke="var(--muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -357,7 +331,6 @@ Format your response as:
                   boxShadow: "var(--s-lift)",
                   overflow: "hidden",
                 }}>
-                  {/* Header */}
                   <div style={{
                     display: "flex", alignItems: "center", justifyContent: "space-between",
                     padding: "13px 15px",
@@ -381,10 +354,9 @@ Format your response as:
                           fontSize: 13, fontWeight: 700,
                           color: "var(--ink)", letterSpacing: "-0.2px",
                         }}>AI Insights</div>
-                        <div style={{
-                          fontFamily: "var(--font-body)",
-                          fontSize: 10.5, color: "var(--muted)",
-                        }}>{isGenerating ? "Analyzing…" : "Powered by Gemini"}</div>
+                        <div style={{ fontSize: 10.5, color: "var(--muted)" }}>
+                          {isGenerating ? "Analyzing…" : "Powered by Gemini"}
+                        </div>
                       </div>
                     </div>
                     <button
@@ -392,13 +364,11 @@ Format your response as:
                       style={{
                         background: "var(--surface)", border: "1px solid var(--border)",
                         borderRadius: 8, padding: "4px 10px", cursor: "pointer",
-                        fontFamily: "var(--font-body)",
                         fontSize: 11, fontWeight: 600, color: "var(--muted)",
                       }}
                     >Done</button>
                   </div>
 
-                  {/* Body */}
                   <div style={{ padding: "14px 15px" }}>
                     {isGenerating ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -424,7 +394,6 @@ Format your response as:
                               }}>{i + 1}</span>
                             </div>
                             <p style={{
-                              fontFamily: "var(--font-body)",
                               fontSize: 13, fontWeight: 400,
                               color: "var(--ink-soft)", lineHeight: 1.6, margin: 0, flex: 1,
                             }}>{insight}</p>
@@ -438,7 +407,7 @@ Format your response as:
             </div>
           )}
 
-          {/* ── Empty state ───────────────────────────────────────── */}
+          {/* ── Empty state ── */}
           {!isFetching && displayInstances.length === 0 ? (
             <div className="ec-enter" style={{
               display: "flex", flexDirection: "column",
@@ -467,26 +436,23 @@ Format your response as:
                 color: "var(--ink)", letterSpacing: "-0.3px", marginBottom: 7,
               }}>No instances yet</div>
               <div style={{
-                fontFamily: "var(--font-body)",
                 fontSize: 13, color: "var(--muted)",
                 lineHeight: 1.6, maxWidth: 220, marginBottom: 5,
               }}>Hit Sync to pull your AWS EC2 instances</div>
-              <div style={{
-                fontFamily: "var(--font-body)",
-                fontSize: 11, color: "var(--muted)", opacity: 0.55,
-              }}>Loads instantly from cache after first sync</div>
+              <div style={{ fontSize: 11, color: "var(--muted)", opacity: 0.55 }}>
+                Loads instantly from cache after first sync
+              </div>
             </div>
 
           ) : (
-            /* ── Instance cards ─────────────────────────────────── */
+            /* ── Instance cards ── */
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {displayInstances.map((instance, i) => {
-                const st = statusCfg(instance.State?.Name);
-                const region = instance.Placement?.AvailabilityZone?.split('-')[0] || '—';
+                const st = statusCfg(instance.state);           // ✅ fixed
                 return (
                   <div
-                    key={instance.InstanceId}
-                    onClick={() => handleNavigate(instance.InstanceId)}
+                    key={instance.instance_id}                  // ✅ fixed
+                    onClick={() => handleNavigate(instance)} // ✅ fixed
                     className="ec-card ec-press"
                     style={{
                       animationDelay: `${0.1 + i * 0.05}s`,
@@ -519,14 +485,16 @@ Format your response as:
                       }} />
 
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        {/* ID + state row */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 5 }}>
+                        {/* ID row + name (if present) */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
                           <div style={{
                             fontFamily: "var(--font-display)",
                             fontSize: 14.5, fontWeight: 700,
                             color: "var(--ink)", letterSpacing: "-0.3px",
                             overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
-                          }}>{instance.InstanceId}</div>
+                          }}>
+                            {instance.name || instance.instance_id} {/* ✅ show name if available */}
+                          </div>
 
                           <div style={{
                             display: "flex", alignItems: "center", gap: 5,
@@ -541,18 +509,21 @@ Format your response as:
                               }} />
                             )}
                             <span style={{
-                              fontFamily: "var(--font-body)",
                               fontSize: 11, fontWeight: 600,
                               color: st.color, letterSpacing: "0.1px",
-                            }}>{instance.State?.Name || 'Unknown'}</span>
+                            }}>{instance.state || 'Unknown'}</span> {/* ✅ fixed */}
                           </div>
                         </div>
 
+                        {/* Instance ID (secondary) */}
+                        <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 2 }}>
+                          {instance.instance_id} {/* ✅ fixed */}
+                        </div>
+
                         {/* Region */}
-                        <div style={{
-                          fontFamily: "var(--font-body)",
-                          fontSize: 12.5, color: "var(--muted)",
-                        }}>{region}</div>
+                        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
+                          {instance.region || '—'} {/* ✅ fixed — direct region field */}
+                        </div>
                       </div>
                     </div>
 
@@ -565,25 +536,29 @@ Format your response as:
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{
-                          fontFamily: "var(--font-body)",
                           fontSize: 10.5, fontWeight: 600,
                           color: "var(--muted)", letterSpacing: "0.7px", textTransform: "uppercase",
                         }}>Type</span>
                         <span style={{
                           fontFamily: "var(--font-display)",
                           fontSize: 12, fontWeight: 600, color: "var(--ink-soft)",
-                        }}>{instance.InstanceType || '—'}</span>
+                        }}>{instance.instance_type || '—'}</span> {/* ✅ fixed */}
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <span style={{
-                          fontFamily: "var(--font-body)",
-                          fontSize: 12, fontWeight: 600,
-                          color: "var(--accent)",
-                        }}>Details</span>
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
-                             stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M9 18l6-6-6-6"/>
-                        </svg>
+
+                      {/* IPs */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {instance.public_ip && (
+                          <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                            {instance.public_ip} {/* ✅ bonus — show public IP */}
+                          </span>
+                        )}
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>Details</span>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                               stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M9 18l6-6-6-6"/>
+                          </svg>
+                        </div>
                       </div>
                     </div>
                   </div>

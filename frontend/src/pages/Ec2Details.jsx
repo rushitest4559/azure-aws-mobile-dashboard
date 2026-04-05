@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
     FaArrowLeft, FaServer, FaGlobe, FaPlay, FaPause, FaNetworkWired,
-    FaHdd, FaTag, FaShieldAlt, FaSync, FaCheckCircle, FaTimesCircle,
+    FaHdd, FaTag, FaShieldAlt, FaSync, FaTimesCircle,
     FaRobot, FaSpinner, FaCircle
 } from 'react-icons/fa';
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -27,7 +27,7 @@ const EC2Details = () => {
     const { data: details, refetch, isFetching, isError, dataUpdatedAt } = useQuery({
         queryKey: ['ec2InstanceDetails', instanceId],
         queryFn: async () => {
-            const [id, region] = instanceId.split('_');
+            const [id, region] = instanceId.split('__');
             const url = new URL(`${import.meta.env.VITE_API_URL}/aws/ec2/details`);
             url.searchParams.append('instance_id', id || instanceId);
             url.searchParams.append('region', region || 'us-east-1');

@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
     FaArrowLeft, FaCube, FaGlobe, FaLock, FaTag, FaShieldAlt,
-    FaSync, FaCheckCircle, FaTimesCircle, FaRobot, FaSpinner, FaNetworkWired
+    FaSync, FaTimesCircle, FaRobot, FaSpinner, FaNetworkWired
 } from 'react-icons/fa';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { secureFetch } from '../api';
@@ -12,7 +12,41 @@ import { secureFetch } from '../api';
  * EksDetails — Cloud Control
  * Design: EKS token system + Apple-like detail page feel
  * Logic: unchanged
+ *
+ * NEW (ported from EksList):
+ *  • Last-updated timestamp pill — persists via localStorage, click to flip between absolute & relative
+ *  • Sync button shows a live seconds counter while fetching
  */
+
+/* ── Relative-time helper ───────────────────────────────────────────── */
+function timeAgo(ts) {
+    if (!ts) return null;
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 5) return 'just now';
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) {
+        const m = Math.floor(diff / 60);
+        return `${m} min${m !== 1 ? 's' : ''} ago`;
+    }
+    if (diff < 86400) {
+        const h = Math.floor(diff / 3600);
+        return `${h} hr${h !== 1 ? 's' : ''} ago`;
+    }
+    const d = Math.floor(diff / 86400);
+    return `${d} day${d !== 1 ? 's' : ''} ago`;
+}
+
+/* ── Absolute-time helper ───────────────────────────────────────────── */
+function formatAbsolute(ts) {
+    if (!ts) return null;
+    const d = new Date(ts);
+    const day = d.toLocaleDateString('en-US', { weekday: 'short' });
+    const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const time = d.toLocaleTimeString('en-US', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
+    });
+    return `${date} · ${day} · ${time}`;
+}
 
 const EksDetails = () => {
     const { clusterName } = useParams();
@@ -24,15 +58,88 @@ const EksDetails = () => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [aiSummary, setAiSummary] = useState(null);
 
+    /* ── Persistent last-synced timestamp (localStorage, keyed per cluster) ── */
+    const storageKey = `eksDetailsLastSynced_${clusterName}_${region}`;
+    const [lastUpdated, setLastUpdated] = useState(() => {
+        try {
+            const saved = localStorage.getItem(storageKey);
+            return saved ? parseInt(saved, 10) : null;
+        } catch { return null; }
+    });
+    const [showRelative, setShowRelative] = useState(false);
+
+    /* ── Live elapsed counter ── */
+    const [elapsed, setElapsed] = useState(null);
+    const [doneTime, setDoneTime] = useState(null);
+    const elapsedRef = useRef(null);
+    const syncStartRef = useRef(null);
+
+    /* Tick every second so relative label stays fresh */
+    const [, forceUpdate] = useState(0);
+    useEffect(() => {
+        const id = setInterval(() => forceUpdate(n => n + 1), 1000);
+        return () => clearInterval(id);
+    }, []);
+
+    /* ── Persist last-synced timestamp to localStorage ── */
+    const saveLastSynced = (ts) => {
+        try { localStorage.setItem(storageKey, String(ts)); } catch {}
+        setLastUpdated(ts);
+    };
+
+    const startElapsed = () => {
+        setDoneTime(null);
+        setElapsed('0.0');
+        syncStartRef.current = Date.now();
+        elapsedRef.current = setInterval(() => {
+            const s = ((Date.now() - syncStartRef.current) / 1000).toFixed(1);
+            setElapsed(s);
+        }, 100);
+    };
+
+    const stopElapsed = (success = true) => {
+        if (elapsedRef.current) {
+            clearInterval(elapsedRef.current);
+            elapsedRef.current = null;
+        }
+        const total = syncStartRef.current
+            ? ((Date.now() - syncStartRef.current) / 1000).toFixed(1)
+            : null;
+        setElapsed(null);
+        syncStartRef.current = null;
+        if (total) {
+            setDoneTime({ value: total, success });
+            setTimeout(() => setDoneTime(null), 60 * 60 * 1000); // 1 hour
+        }
+    };
+
+    /* ── handleSync: wraps refetch + starts counter ── */
+    const handleSync = () => {
+        if (isFetching) return;
+        startElapsed();
+        refetch();
+    };
+
     // ── Logic untouched ──────────────────────────────────────────────
     const { data: details, refetch, isFetching, isError, dataUpdatedAt } = useQuery({
         queryKey: ['eksDetails', clusterName, region],
         queryFn: async () => {
-            const res = await secureFetch(
-                `${import.meta.env.VITE_API_URL}/aws/eks/details?name=${clusterName}&region=${region}`
-            );
-            if (!res.ok) throw new Error(`Failed to fetch EKS details: ${res.statusText}`);
-            return res.json();
+            try {
+                const res = await secureFetch(
+                    `${import.meta.env.VITE_API_URL}/aws/eks/details?name=${clusterName}&region=${region}`
+                );
+                if (!res.ok) throw new Error(`Failed to fetch EKS details: ${res.statusText}`);
+                const data = await res.json();
+                // ✅ success path — persist timestamp + stop timer
+                saveLastSynced(Date.now());
+                stopElapsed(true);
+                return data;
+            } catch (err) {
+                // ✅ error path — still record the attempt
+                saveLastSynced(Date.now());
+                stopElapsed(false);
+                throw err;
+            }
         },
         enabled: false,
         staleTime: Infinity,
@@ -78,7 +185,6 @@ Format your response as:
             const result = await model.generateContent(prompt);
             const response = await result.response;
             const text = response.text();
-            console.log('Gemini response:', text);
 
             const insights = text
                 .split('\n')
@@ -114,11 +220,47 @@ Format your response as:
     const status = details?.core?.status;
     const statusCfg = (s) => {
         const sl = s?.toLowerCase();
-        if (sl === 'active')   return { color: '#00C875', bg: 'rgba(0,200,117,0.1)',  border: 'rgba(0,200,117,0.22)',  pulse: true  };
-        if (sl === 'creating') return { color: '#0066FF', bg: 'rgba(0,102,255,0.1)',  border: 'rgba(0,102,255,0.22)',  pulse: false };
-        return                        { color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.22)', pulse: false };
+        if (sl === 'active') return { color: '#00C875', bg: 'rgba(0,200,117,0.1)', border: 'rgba(0,200,117,0.22)', pulse: true };
+        if (sl === 'creating') return { color: '#0066FF', bg: 'rgba(0,102,255,0.1)', border: 'rgba(0,102,255,0.22)', pulse: false };
+        return { color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.22)', pulse: false };
     };
     const st = statusCfg(status);
+
+    /* ── What to render inside the sync button label area ── */
+    const syncLabel = () => {
+        if (isFetching && elapsed !== null) {
+            return (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{
+                        fontFamily: "var(--font-body)",
+                        fontSize: 13, fontWeight: 600,
+                        color: "var(--green)",
+                        letterSpacing: "0.1px",
+                    }}>Syncing</span>
+                    <span style={{
+                        fontFamily: "'SF Mono', 'Fira Code', monospace",
+                        fontSize: 11, fontWeight: 700,
+                        color: "var(--green)",
+                        background: "rgba(0,200,117,0.12)",
+                        border: "1px solid rgba(0,200,117,0.2)",
+                        borderRadius: 6,
+                        padding: "1px 6px",
+                        letterSpacing: "0.5px",
+                        minWidth: 32,
+                        textAlign: "center",
+                    }}>{elapsed}s</span>
+                </span>
+            );
+        }
+        return (
+            <span style={{
+                fontFamily: "var(--font-body)",
+                fontSize: 13, fontWeight: 600,
+                color: "#fff",
+                letterSpacing: "0.1px",
+            }}>Sync</span>
+        );
+    };
 
     return (
         <>
@@ -197,6 +339,45 @@ Format your response as:
                     50%      { transform:translate(-50%,-50%) scale(1.15); opacity:0.55; }
                 }
                 .xd-orb { animation: xd-orb 8s ease-in-out infinite; }
+
+                /* Sync button springy press */
+                .sync-btn {
+                    transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1),
+                                box-shadow 0.22s ease,
+                                background 0.22s ease,
+                                border-color 0.22s ease;
+                }
+                .sync-btn:not(:disabled):active {
+                    transform: scale(0.93);
+                }
+
+                /* Timestamp pill hover glow */
+                .ts-pill {
+                    transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+                }
+                .ts-pill:hover {
+                    background: rgba(10,15,30,0.065) !important;
+                    border-color: rgba(10,15,30,0.14) !important;
+                    box-shadow: 0 2px 8px rgba(10,15,30,0.07);
+                }
+                .ts-pill:active {
+                    transform: scale(0.96);
+                    transition: transform 0.1s ease;
+                }
+
+                /* Latency badge — drops in below sync button */
+                @keyframes lat-drop {
+                    from { opacity:0; transform:translateY(-6px) scale(0.94); }
+                    to   { opacity:1; transform:translateY(0)    scale(1);    }
+                }
+                @keyframes lat-out {
+                    0%,70% { opacity:1; }
+                    100%   { opacity:0; transform:translateY(4px); }
+                }
+                .lat-badge {
+                    animation: lat-drop 0.32s cubic-bezier(0.34,1.4,0.64,1) both,
+                               lat-out  5s ease-in-out 0.1s forwards;
+                }
             `}</style>
 
             <div className="xd" style={{
@@ -211,36 +392,126 @@ Format your response as:
                     <div className="xd-enter" style={{
                         display: "flex", alignItems: "center", justifyContent: "space-between",
                         padding: "16px 0 20px",
+                        gap: 12,
                     }}>
+                        {/* Back button */}
                         <button
                             onClick={() => navigate(-1)}
                             className="xd-press"
-                            style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: "6px 0" }}
+                            style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: "6px 0", flexShrink: 0 }}
                         >
                             <FaArrowLeft style={{ fontSize: 11, color: "var(--accent)" }} />
                             <span style={{ fontFamily: "var(--font-body)", fontSize: 13, fontWeight: 600, color: "var(--accent)", letterSpacing: "0.1px" }}>Back</span>
                         </button>
 
-                        <button
-                            onClick={() => refetch()}
-                            disabled={isFetching}
-                            className="xd-press"
-                            style={{
-                                display: "flex", alignItems: "center", gap: 7,
-                                padding: "8px 16px",
-                                background: isFetching ? "rgba(0,200,117,0.08)" : "var(--ink)",
-                                border: isFetching ? "1.5px solid rgba(0,200,117,0.3)" : "1.5px solid transparent",
-                                borderRadius: 99,
-                                cursor: isFetching ? "default" : "pointer",
-                                boxShadow: isFetching ? "none" : "0 2px 12px rgba(10,15,30,0.22)",
-                                transition: "all 0.22s ease",
-                            }}
-                        >
-                            <FaSync className={isFetching ? "xd-spin" : ""} style={{ fontSize: 10, color: isFetching ? "var(--green)" : "#fff" }} />
-                            <span style={{ fontFamily: "var(--font-body)", fontSize: 12.5, fontWeight: 600, color: isFetching ? "var(--green)" : "#fff" }}>
-                                {isFetching ? "Syncing" : "Sync"}
-                            </span>
-                        </button>
+                        {/* ── Sync button + timestamp pill + latency badge (right side) ── */}
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+
+                            {/* Row: timestamp pill + sync button */}
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+
+                                {/* ── Last-updated timestamp pill — persists across sessions ── */}
+                                {lastUpdated ? (
+                                    <div
+                                        onClick={() => setShowRelative(v => !v)}
+                                        className="ts-pill"
+                                        style={{
+                                            display: "inline-flex", alignItems: "center", gap: 5,
+                                            background: "rgba(10,15,30,0.04)",
+                                            border: "1px solid rgba(10,15,30,0.09)",
+                                            borderRadius: 99,
+                                            padding: "3px 10px",
+                                            cursor: "pointer",
+                                            userSelect: "none",
+                                        }}
+                                        title="Click to switch between exact time and relative time"
+                                    >
+                                        {/* green dot */}
+                                        <div style={{
+                                            width: 5, height: 5, borderRadius: "50%", flexShrink: 0,
+                                            background: "var(--green)",
+                                            boxShadow: "0 0 5px var(--green)",
+                                        }} />
+                                        <span style={{
+                                            fontFamily: showRelative ? "var(--font-body)" : "'SF Mono','Fira Code',monospace",
+                                            fontSize: 11, fontWeight: 600,
+                                            color: "var(--ink-soft)",
+                                            letterSpacing: showRelative ? "0.1px" : "0.3px",
+                                            whiteSpace: "nowrap",
+                                        }}>
+                                            {showRelative ? timeAgo(lastUpdated) : formatAbsolute(lastUpdated)}
+                                        </span>
+                                        {/* tap hint */}
+                                        <span style={{ fontSize: 9, color: "var(--muted)", opacity: 0.6 }}>↕</span>
+                                    </div>
+                                ) : (
+                                    <div style={{
+                                        fontFamily: "var(--font-body)",
+                                        fontSize: 11, color: "var(--muted)", opacity: 0.5,
+                                    }}>Not synced yet</div>
+                                )}
+
+                                {/* Sync button */}
+                                <button
+                                    onClick={handleSync}
+                                    disabled={isFetching}
+                                    className="sync-btn"
+                                    style={{
+                                        display: "flex", alignItems: "center", gap: 7,
+                                        padding: "9px 18px",
+                                        background: isFetching ? "rgba(0,200,117,0.08)" : "var(--ink)",
+                                        border: isFetching
+                                            ? "1.5px solid rgba(0,200,117,0.3)"
+                                            : "1.5px solid transparent",
+                                        borderRadius: 99,
+                                        cursor: isFetching ? "default" : "pointer",
+                                        boxShadow: isFetching ? "none" : "0 2px 12px rgba(10,15,30,0.22)",
+                                    }}
+                                >
+                                    <FaSync
+                                        className={isFetching ? "xd-spin" : ""}
+                                        style={{ fontSize: 11, color: isFetching ? "var(--green)" : "#fff" }}
+                                    />
+                                    {syncLabel()}
+                                </button>
+                            </div>
+
+                            {/* ── Latency badge — drops in right after sync done ── */}
+                            {doneTime && (
+                                <div className="lat-badge" style={{
+                                    display: "flex", alignItems: "center", gap: 5,
+                                    padding: "4px 10px",
+                                    background: doneTime.success
+                                        ? "rgba(0,200,117,0.08)"
+                                        : "rgba(245,158,11,0.08)",
+                                    border: `1px solid ${doneTime.success ? "rgba(0,200,117,0.22)" : "rgba(245,158,11,0.22)"}`,
+                                    borderRadius: 99,
+                                }}>
+                                    {doneTime.success ? (
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
+                                            stroke="#00C875" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="20 6 9 17 4 12" />
+                                        </svg>
+                                    ) : (
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
+                                            stroke="#F59E0B" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                                        </svg>
+                                    )}
+                                    <span style={{
+                                        fontFamily: "'SF Mono','Fira Code',monospace",
+                                        fontSize: 10.5, fontWeight: 700,
+                                        color: doneTime.success ? "var(--green)" : "#F59E0B",
+                                        letterSpacing: "0.4px",
+                                    }}>{doneTime.value}s</span>
+                                    <span style={{
+                                        fontFamily: "var(--font-body)",
+                                        fontSize: 10, fontWeight: 500,
+                                        color: "var(--muted)",
+                                    }}>{doneTime.success ? "fetched" : "failed"}</span>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {/* ── Hero header ───────────────────────────────────── */}
@@ -425,7 +696,7 @@ Format your response as:
                                                 <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--muted)", marginTop: 1 }}>Analyze this cluster with Gemini</div>
                                             </div>
                                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M9 18l6-6-6-6"/>
+                                                <path d="M9 18l6-6-6-6" />
                                             </svg>
                                         </button>
                                     ) : (
@@ -494,18 +765,18 @@ Format your response as:
                             {/* ── Configuration card ────────────────────── */}
                             <div className="xd-enter4" style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, boxShadow: "var(--s-card)", overflow: "hidden", marginBottom: 14 }}>
                                 <SectionHeader label="Configuration" />
-                                <XdRow icon={<FaGlobe     style={{ fontSize: 11, color: "var(--muted)" }} />} label="Region"           value={details?.core?.region} />
-                                <XdRow icon={<FaCube      style={{ fontSize: 11, color: "var(--muted)" }} />} label="Version"          value={details?.core?.version} />
+                                <XdRow icon={<FaGlobe style={{ fontSize: 11, color: "var(--muted)" }} />} label="Region" value={details?.core?.region} />
+                                <XdRow icon={<FaCube style={{ fontSize: 11, color: "var(--muted)" }} />} label="Version" value={details?.core?.version} />
                                 <XdRow icon={<FaShieldAlt style={{ fontSize: 11, color: "var(--muted)" }} />} label="Platform Version" value={details?.core?.platform_version} />
-                                <XdRow icon={<FaNetworkWired style={{ fontSize: 11, color: "var(--muted)" }} />} label="VPC ID"        value={details?.networking?.vpc_id || 'Unknown'} last />
+                                <XdRow icon={<FaNetworkWired style={{ fontSize: 11, color: "var(--muted)" }} />} label="VPC ID" value={details?.networking?.vpc_id || 'Unknown'} last />
                             </div>
 
                             {/* ── Networking card ───────────────────────── */}
                             <div className="xd-enter5" style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, boxShadow: "var(--s-card)", overflow: "hidden", marginBottom: 14 }}>
                                 <SectionHeader icon={<FaNetworkWired style={{ fontSize: 10, color: "var(--muted)" }} />} label="Networking" />
-                                <SecurityXdRow label="Public Endpoint"  active={details?.networking?.endpoint_public_access} />
+                                <SecurityXdRow label="Public Endpoint" active={details?.networking?.endpoint_public_access} />
                                 <SecurityXdRow label="Private Endpoint" active={details?.networking?.endpoint_private_access} />
-                                <XdRow icon={<FaGlobe     style={{ fontSize: 11, color: "var(--muted)" }} />} label="Subnets"        value={details?.networking?.subnet_ids?.length || 0} />
+                                <XdRow icon={<FaGlobe style={{ fontSize: 11, color: "var(--muted)" }} />} label="Subnets" value={details?.networking?.subnet_ids?.length || 0} />
                                 <XdRow icon={<FaShieldAlt style={{ fontSize: 11, color: "var(--muted)" }} />} label="Security Groups" value={details?.networking?.cluster_security_group_ids?.length || 0} last />
                             </div>
 
