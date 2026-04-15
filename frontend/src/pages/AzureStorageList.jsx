@@ -1,49 +1,91 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FaCloud, FaSync, FaRobot, FaSpinner, FaDatabase } from 'react-icons/fa';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { secureFetch } from '../api';
 import { useNavigate } from 'react-router-dom';
 
-/*
- * AzureStorageList — Cloud Control
- * Design: identical tokens/layout to EksList
- * Logic: unchanged
- */
+/* ── Relative-time helper ───────────────────────────────────────────── */
+function timeAgo(ts) {
+    if (!ts) return null;
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 5)    return 'just now';
+    if (diff < 60)   return `${diff}s ago`;
+    if (diff < 3600) { const m = Math.floor(diff / 60); return `${m} min${m !== 1 ? 's' : ''} ago`; }
+    if (diff < 86400) { const h = Math.floor(diff / 3600); return `${h} hr${h !== 1 ? 's' : ''} ago`; }
+    const d = Math.floor(diff / 86400);
+    return `${d} day${d !== 1 ? 's' : ''} ago`;
+}
+
+/* ── Absolute-time helper ───────────────────────────────────────────── */
+function formatAbsolute(ts) {
+    if (!ts) return null;
+    const d    = new Date(ts);
+    const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const day  = d.toLocaleDateString('en-US', { weekday: 'short' });
+    const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+    return `${date} · ${day} · ${time}`;
+}
 
 const AzureStorageList = () => {
     const navigate = useNavigate();
     const subscriptionId = import.meta.env.VITE_AZURE_SUBSCRIPTION_ID || '';
 
-    const [showSummary, setShowSummary] = useState(false);
+    const [showSummary,  setShowSummary]  = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [aiSummary, setAiSummary] = useState(null);
+    const [aiSummary,    setAiSummary]    = useState(null);
 
-    // ── Logic untouched ──────────────────────────────────────────────
+    /* ── Timestamp + sync-counter state ────────────────────────────── */
+    const storageKey = `azureStorageLastSynced_${subscriptionId}`;
+    const [lastUpdated,  setLastUpdated]  = useState(() => {
+        try {
+            const saved = localStorage.getItem(storageKey);
+            return saved ? parseInt(saved, 10) : null;
+        } catch { return null; }
+    });
+    const [showRelative, setShowRelative] = useState(false);
+    const [elapsed,      setElapsed]      = useState(null);
+    const [doneTime,     setDoneTime]     = useState(null);
+    const elapsedRef   = useRef(null);
+    const syncStartRef = useRef(null);
+
+    /* tick every second so relative label stays fresh */
+    const [, forceUpdate] = useState(0);
+    useEffect(() => {
+        const id = setInterval(() => forceUpdate(n => n + 1), 1000);
+        return () => clearInterval(id);
+    }, []);
+
+    /* ── Cache helpers ──────────────────────────────────────────────── */
     const getCachedData = useCallback(() => {
         try {
             const cached = localStorage.getItem(`azureStorageCache_${subscriptionId}`);
             return cached ? JSON.parse(cached) : null;
-        } catch {
-            return null;
-        }
+        } catch { return null; }
     }, [subscriptionId]);
 
     const saveToCache = useCallback((data) => {
         try {
             localStorage.setItem(`azureStorageCache_${subscriptionId}`, JSON.stringify({
                 data,
-                timestamp: Date.now()
+                timestamp: Date.now(),
             }));
         } catch (error) {
             console.error('Failed to save to localStorage:', error);
         }
     }, [subscriptionId]);
 
+    /* ── Persist last-synced timestamp ─────────────────────────────── */
+    const saveLastSynced = useCallback((ts) => {
+        try { localStorage.setItem(storageKey, String(ts)); } catch {}
+        setLastUpdated(ts);
+    }, [storageKey]);
+
+    /* ── Scroll restoration ─────────────────────────────────────────── */
     useEffect(() => {
-        const savedScrollPosition = sessionStorage.getItem('azureStorageListScrollPosition');
-        if (savedScrollPosition) {
-            window.scrollTo(0, parseInt(savedScrollPosition));
+        const saved = sessionStorage.getItem('azureStorageListScrollPosition');
+        if (saved) {
+            window.scrollTo(0, parseInt(saved));
             sessionStorage.removeItem('azureStorageListScrollPosition');
         }
     }, []);
@@ -53,37 +95,117 @@ const AzureStorageList = () => {
         navigate(`/azure/storage/details/${account.name}?subscription_id=${subscriptionId}&resource_group=${account.resource_group}`);
     };
 
-    const { data: accounts = [], refetch, isFetching, error, isError } = useQuery({
+    /* ── Elapsed timer helpers ──────────────────────────────────────── */
+    const startElapsed = () => {
+        setDoneTime(null);
+        setElapsed('0.0');
+        syncStartRef.current = Date.now();
+        elapsedRef.current = setInterval(() => {
+            const s = ((Date.now() - syncStartRef.current) / 1000).toFixed(1);
+            setElapsed(s);
+        }, 100);
+    };
+
+    const stopElapsed = (success = true) => {
+        if (elapsedRef.current) { clearInterval(elapsedRef.current); elapsedRef.current = null; }
+        const total = syncStartRef.current
+            ? ((Date.now() - syncStartRef.current) / 1000).toFixed(1)
+            : null;
+        setElapsed(null);
+        syncStartRef.current = null;
+        if (total) {
+            setDoneTime({ value: total, success });
+            setTimeout(() => setDoneTime(null), 60 * 60 * 1000);
+        }
+    };
+
+    /* ── Query ──────────────────────────────────────────────────────── */
+    const { data: accounts = [], refetch, isFetching, isError } = useQuery({
         queryKey: ['azureStorageAccounts', subscriptionId],
         queryFn: async () => {
-            if (!subscriptionId) throw new Error('Subscription ID required');
-            const res = await secureFetch(
-                `${import.meta.env.VITE_API_URL}/azure/storage/list?subscription_id=${subscriptionId}`
-            );
-            if (!res.ok) throw new Error(`Failed to fetch Azure Storage accounts: ${res.statusText}`);
-            const data = await res.json();
-            saveToCache(data);
-            return data;
+            try {
+                if (!subscriptionId) throw new Error('Subscription ID required');
+                const res = await secureFetch(
+                    `${import.meta.env.VITE_API_URL}/azure/storage/list?subscription_id=${subscriptionId}`
+                );
+                if (!res.ok) throw new Error(`Failed to fetch Azure Storage accounts: ${res.statusText}`);
+                const data = await res.json();
+                saveToCache(data);
+                saveLastSynced(Date.now());
+                stopElapsed(true);
+                return data;
+            } catch (err) {
+                saveLastSynced(Date.now());
+                stopElapsed(false);
+                throw err;
+            }
         },
-        enabled: false,
+        enabled:   false,
         staleTime: Infinity,
-        cacheTime: Infinity,
-        retry: false,
+        gcTime:    Infinity,
+        retry:     false,
     });
 
-    const cachedData = getCachedData();
-    const displayAccounts = cachedData?.data || accounts;
+    const cachedData       = getCachedData();
+    const displayAccounts  = cachedData?.data || accounts;
 
+    /* ── handleSync ─────────────────────────────────────────────────── */
+    const handleSync = () => {
+        if (isFetching || !subscriptionId) return;
+        startElapsed();
+        refetch();
+    };
+
+    const handleFlip = () => {
+        if (!lastUpdated) return;
+        setShowRelative(v => !v);
+    };
+
+    /* ── Sync button label ──────────────────────────────────────────── */
+    const syncLabel = () => {
+        if (isFetching && elapsed !== null) {
+            return (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{
+                        fontFamily: "var(--font-body)",
+                        fontSize: 13, fontWeight: 600,
+                        color: "var(--green)", letterSpacing: "0.1px",
+                    }}>Syncing</span>
+                    <span style={{
+                        fontFamily: "'SF Mono','Fira Code',monospace",
+                        fontSize: 11, fontWeight: 700,
+                        color: "var(--green)",
+                        background: "rgba(0,200,117,0.12)",
+                        border: "1px solid rgba(0,200,117,0.2)",
+                        borderRadius: 6,
+                        padding: "1px 6px",
+                        letterSpacing: "0.5px",
+                        minWidth: 32,
+                        textAlign: "center",
+                    }}>{elapsed}s</span>
+                </span>
+            );
+        }
+        return (
+            <span style={{
+                fontFamily: "var(--font-body)",
+                fontSize: 13, fontWeight: 600,
+                color: "#fff", letterSpacing: "0.1px",
+            }}>Sync</span>
+        );
+    };
+
+    /* ── AI Summary ─────────────────────────────────────────────────── */
     const generateAISummary = async () => {
         setIsGenerating(true);
         setShowSummary(true);
         try {
             const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
             const accountData = displayAccounts.map(account => ({
-                name: account.name,
-                location: account.location,
-                sku: account.sku,
-                kind: account.kind,
+                name:           account.name,
+                location:       account.location,
+                sku:            account.sku,
+                kind:           account.kind,
                 resource_group: account.resource_group,
             }));
 
@@ -102,12 +224,9 @@ Format your response as:
 2. Second insight here
 3. Third insight here`;
 
-            const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+            const model  = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
             const result = await model.generateContent(prompt);
-            const response = await result.response;
-            const text = response.text();
-
-            console.log('Gemini response:', text);
+            const text   = result.response.text();
 
             const insights = text
                 .split('\n')
@@ -115,22 +234,17 @@ Format your response as:
                 .map(line => line.replace(/^\d+[\.)]\s*/, '').trim())
                 .filter(line => line.length > 0);
 
-            if (insights.length > 0) {
-                setAiSummary(insights.slice(0, 3));
-            } else {
-                setAiSummary([
-                    text.trim() || `${displayAccounts.length} storage accounts analyzed`,
-                    'Review regional distribution for latency optimization',
-                    'Consider SKU consolidation for cost savings',
-                ]);
-            }
+            setAiSummary(insights.length > 0 ? insights.slice(0, 3) : [
+                text.trim() || `${displayAccounts.length} storage accounts analyzed`,
+                'Review regional distribution for latency optimization',
+                'Consider SKU consolidation for cost savings',
+            ]);
         } catch (error) {
             console.error('AI Summary generation failed:', error);
-            const totalAccounts = displayAccounts.length;
             const uniqueRegions = new Set(displayAccounts.map(a => a.location)).size;
-            const uniqueSkus = new Set(displayAccounts.map(a => a.sku)).size;
+            const uniqueSkus    = new Set(displayAccounts.map(a => a.sku)).size;
             setAiSummary([
-                `${totalAccounts} Storage accounts across ${uniqueRegions} regions`,
+                `${displayAccounts.length} storage accounts across ${uniqueRegions} regions`,
                 `${uniqueSkus} different SKU types detected`,
                 `Resource groups: ${new Set(displayAccounts.map(a => a.resource_group)).size}`,
             ]);
@@ -138,7 +252,6 @@ Format your response as:
             setIsGenerating(false);
         }
     };
-    // ── End logic ────────────────────────────────────────────────────
 
     return (
         <>
@@ -211,9 +324,42 @@ Format your response as:
                     50%      { transform:translate(-50%,-50%) scale(1.1); opacity:0.65; }
                 }
                 .az-orb { animation: az-orb 7s ease-in-out infinite; }
+
+                /* Sync button springy press */
+                .sync-btn {
+                    transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1),
+                                box-shadow 0.22s ease,
+                                background 0.22s ease,
+                                border-color 0.22s ease;
+                }
+                .sync-btn:not(:disabled):active { transform: scale(0.93); }
+
+                /* Timestamp pill */
+                .ts-pill {
+                    transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+                }
+                .ts-pill:hover {
+                    background: rgba(10,15,30,0.065) !important;
+                    border-color: rgba(10,15,30,0.14) !important;
+                    box-shadow: 0 2px 8px rgba(10,15,30,0.07);
+                }
+                .ts-pill:active { transform: scale(0.96); transition: transform 0.1s ease; }
+
+                /* Latency badge */
+                @keyframes lat-drop {
+                    from { opacity:0; transform:translateY(-6px) scale(0.94); }
+                    to   { opacity:1; transform:translateY(0)    scale(1);    }
+                }
+                @keyframes lat-out {
+                    0%,70% { opacity:1; }
+                    100%   { opacity:0; transform:translateY(4px); }
+                }
+                .lat-badge {
+                    animation: lat-drop 0.32s cubic-bezier(0.34,1.4,0.64,1) both,
+                               lat-out  5s ease-in-out 0.1s forwards;
+                }
             `}</style>
 
-            {/* ── Page ─────────────────────────────────────────────────────── */}
             <div className="az" style={{
                 minHeight: "100vh",
                 background: "var(--surface)",
@@ -222,12 +368,12 @@ Format your response as:
             }}>
                 <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px 56px" }}>
 
-                    {/* ── Page header ───────────────────────────────────────── */}
+                    {/* ── Page header ─────────────────────────────────────── */}
                     <div className="az-enter" style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        marginBottom: 22,
-                        animationDelay: "0s",
+                        display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+                        marginBottom: 22, animationDelay: "0s",
                     }}>
+                        {/* Left: title + timestamp */}
                         <div>
                             <h1 style={{
                                 fontFamily: "var(--font-display)",
@@ -235,52 +381,122 @@ Format your response as:
                                 color: "var(--ink)", letterSpacing: "-0.7px",
                                 margin: 0, lineHeight: 1.2,
                             }}>Storage Accounts</h1>
-                            {displayAccounts.length > 0 && (
-                                <div style={{
-                                    fontFamily: "var(--font-body)",
-                                    fontSize: 11.5, fontWeight: 500,
-                                    color: "var(--muted)", marginTop: 3,
-                                    letterSpacing: "0.1px",
+
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5 }}>
+                                {/* Account count */}
+                                {displayAccounts.length > 0 && (
+                                    <div style={{
+                                        fontFamily: "var(--font-body)",
+                                        fontSize: 11.5, fontWeight: 500,
+                                        color: "var(--muted)", letterSpacing: "0.1px",
+                                    }}>
+                                        {displayAccounts.length} account{displayAccounts.length !== 1 ? 's' : ''} · Azure
+                                    </div>
+                                )}
+
+                                {/* ── Last-updated pill ── */}
+                                {lastUpdated ? (
+                                    <div
+                                        className="ts-pill"
+                                        onClick={handleFlip}
+                                        style={{
+                                            display: "inline-flex", alignItems: "center", gap: 5,
+                                            background: "rgba(10,15,30,0.04)",
+                                            border: "1px solid rgba(10,15,30,0.09)",
+                                            borderRadius: 99,
+                                            padding: "3px 10px",
+                                            cursor: "pointer",
+                                            userSelect: "none",
+                                        }}
+                                        title="Click to switch between exact time and relative time"
+                                    >
+                                        <div style={{
+                                            width: 5, height: 5, borderRadius: "50%", flexShrink: 0,
+                                            background: "var(--green)",
+                                            boxShadow: "0 0 5px var(--green)",
+                                        }} />
+                                        <span style={{
+                                            fontFamily: showRelative ? "var(--font-body)" : "'SF Mono','Fira Code',monospace",
+                                            fontSize: 11, fontWeight: 600,
+                                            color: "var(--ink-soft)",
+                                            letterSpacing: showRelative ? "0.1px" : "0.3px",
+                                            whiteSpace: "nowrap",
+                                        }}>
+                                            {showRelative ? timeAgo(lastUpdated) : formatAbsolute(lastUpdated)}
+                                        </span>
+                                        <span style={{ fontSize: 9, color: "var(--muted)", opacity: 0.6 }}>↕</span>
+                                    </div>
+                                ) : (
+                                    <div style={{
+                                        fontFamily: "var(--font-body)",
+                                        fontSize: 11, color: "var(--muted)", opacity: 0.5,
+                                    }}>Not synced yet</div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* ── Sync button + latency badge ──────────────────── */}
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+                            <button
+                                onClick={handleSync}
+                                disabled={isFetching || !subscriptionId}
+                                className="sync-btn"
+                                style={{
+                                    display: "flex", alignItems: "center", gap: 7,
+                                    padding: "9px 18px",
+                                    background: isFetching ? "rgba(0,200,117,0.08)" : "var(--ink)",
+                                    border: isFetching
+                                        ? "1.5px solid rgba(0,200,117,0.3)"
+                                        : "1.5px solid transparent",
+                                    borderRadius: 99,
+                                    cursor: (isFetching || !subscriptionId) ? "default" : "pointer",
+                                    boxShadow: isFetching ? "none" : "0 2px 12px rgba(10,15,30,0.22)",
+                                    opacity: !subscriptionId ? 0.45 : 1,
+                                }}
+                            >
+                                <FaSync
+                                    className={isFetching ? "az-spin" : ""}
+                                    style={{ fontSize: 11, color: isFetching ? "var(--green)" : "#fff" }}
+                                />
+                                {syncLabel()}
+                            </button>
+
+                            {/* Latency badge */}
+                            {doneTime && (
+                                <div className="lat-badge" style={{
+                                    display: "flex", alignItems: "center", gap: 5,
+                                    padding: "4px 10px",
+                                    background: doneTime.success ? "rgba(0,200,117,0.08)" : "rgba(245,158,11,0.08)",
+                                    border: `1px solid ${doneTime.success ? "rgba(0,200,117,0.22)" : "rgba(245,158,11,0.22)"}`,
+                                    borderRadius: 99,
                                 }}>
-                                    {displayAccounts.length} account{displayAccounts.length !== 1 ? 's' : ''} · Azure
+                                    {doneTime.success ? (
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
+                                             stroke="#00C875" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="20 6 9 17 4 12"/>
+                                        </svg>
+                                    ) : (
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
+                                             stroke="#F59E0B" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                                        </svg>
+                                    )}
+                                    <span style={{
+                                        fontFamily: "'SF Mono','Fira Code',monospace",
+                                        fontSize: 10.5, fontWeight: 700,
+                                        color: doneTime.success ? "var(--green)" : "#F59E0B",
+                                        letterSpacing: "0.4px",
+                                    }}>{doneTime.value}s</span>
+                                    <span style={{
+                                        fontFamily: "var(--font-body)",
+                                        fontSize: 10, fontWeight: 500, color: "var(--muted)",
+                                    }}>{doneTime.success ? "fetched" : "failed"}</span>
                                 </div>
                             )}
                         </div>
-
-                        {/* Sync */}
-                        <button
-                            onClick={() => refetch()}
-                            disabled={isFetching || !subscriptionId}
-                            className="az-press"
-                            style={{
-                                display: "flex", alignItems: "center", gap: 7,
-                                padding: "9px 18px",
-                                background: isFetching ? "rgba(0,200,117,0.08)" : "var(--ink)",
-                                border: isFetching ? "1.5px solid rgba(0,200,117,0.3)" : "1.5px solid transparent",
-                                borderRadius: 99,
-                                cursor: (isFetching || !subscriptionId) ? "default" : "pointer",
-                                boxShadow: isFetching ? "none" : "0 2px 12px rgba(10,15,30,0.22)",
-                                transition: "all 0.22s ease",
-                                flexShrink: 0,
-                                opacity: !subscriptionId ? 0.45 : 1,
-                            }}
-                        >
-                            <FaSync
-                                className={isFetching ? "az-spin" : ""}
-                                style={{ fontSize: 11, color: isFetching ? "var(--green)" : "#fff" }}
-                            />
-                            <span style={{
-                                fontFamily: "var(--font-body)",
-                                fontSize: 13, fontWeight: 600,
-                                color: isFetching ? "var(--green)" : "#fff",
-                                letterSpacing: "0.1px",
-                            }}>
-                                {isFetching ? "Syncing" : "Sync"}
-                            </span>
-                        </button>
                     </div>
 
-                    {/* ── AI Insights ───────────────────────────────────────── */}
+                    {/* ── AI Insights ─────────────────────────────────────── */}
                     {displayAccounts.length > 0 && (
                         <div className="az-enter" style={{ marginBottom: 18, animationDelay: "0.07s" }}>
                             {!showSummary ? (
@@ -342,7 +558,6 @@ Format your response as:
                                     boxShadow: "var(--s-lift)",
                                     overflow: "hidden",
                                 }}>
-                                    {/* Header */}
                                     <div style={{
                                         display: "flex", alignItems: "center", justifyContent: "space-between",
                                         padding: "13px 15px",
@@ -383,7 +598,6 @@ Format your response as:
                                         >Done</button>
                                     </div>
 
-                                    {/* Body */}
                                     <div style={{ padding: "14px 15px" }}>
                                         {isGenerating ? (
                                             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -423,7 +637,7 @@ Format your response as:
                         </div>
                     )}
 
-                    {/* ── Empty state ───────────────────────────────────────── */}
+                    {/* ── Empty state ─────────────────────────────────────── */}
                     {!isFetching && displayAccounts.length === 0 ? (
                         <div className="az-enter" style={{
                             display: "flex", flexDirection: "column",
@@ -463,7 +677,7 @@ Format your response as:
                         </div>
 
                     ) : (
-                        /* ── Account cards ──────────────────────────────────── */
+                        /* ── Account cards ──────────────────────────────── */
                         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                             {displayAccounts.map((account, i) => (
                                 <div
@@ -489,9 +703,7 @@ Format your response as:
                                         e.currentTarget.style.borderColor = "var(--border)";
                                     }}
                                 >
-                                    {/* Main content */}
                                     <div style={{ padding: "14px 15px 12px", display: "flex", alignItems: "flex-start", gap: 12 }}>
-
                                         {/* Accent left bar — blue for Azure */}
                                         <div style={{
                                             width: 3, alignSelf: "stretch", minHeight: 36,
@@ -501,7 +713,6 @@ Format your response as:
                                         }} />
 
                                         <div style={{ flex: 1, minWidth: 0 }}>
-                                            {/* Name + SKU pill */}
                                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 5 }}>
                                                 <div style={{
                                                     fontFamily: "var(--font-display)",
@@ -525,7 +736,6 @@ Format your response as:
                                                 </div>
                                             </div>
 
-                                            {/* Location + resource group */}
                                             <div style={{
                                                 fontFamily: "var(--font-body)",
                                                 fontSize: 12.5, color: "var(--muted)",
@@ -555,8 +765,7 @@ Format your response as:
                                         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                             <span style={{
                                                 fontFamily: "var(--font-body)",
-                                                fontSize: 12, fontWeight: 600,
-                                                color: "var(--accent)",
+                                                fontSize: 12, fontWeight: 600, color: "var(--accent)",
                                             }}>Details</span>
                                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
                                                  stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

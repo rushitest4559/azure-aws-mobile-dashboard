@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -9,36 +9,157 @@ import {
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { secureFetch } from '../api';
 
-/*
- * EC2Details — Cloud Control
- * Design: EKS token system + Apple-like detail page feel
- * Logic: unchanged
- */
+/* ── Relative-time helper ───────────────────────────────────────────── */
+function timeAgo(ts) {
+    if (!ts) return null;
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 5)    return 'just now';
+    if (diff < 60)   return `${diff}s ago`;
+    if (diff < 3600) { const m = Math.floor(diff / 60); return `${m} min${m !== 1 ? 's' : ''} ago`; }
+    if (diff < 86400) { const h = Math.floor(diff / 3600); return `${h} hr${h !== 1 ? 's' : ''} ago`; }
+    const d = Math.floor(diff / 86400);
+    return `${d} day${d !== 1 ? 's' : ''} ago`;
+}
+
+/* ── Absolute-time helper ───────────────────────────────────────────── */
+function formatAbsolute(ts) {
+    if (!ts) return null;
+    const d    = new Date(ts);
+    const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const day  = d.toLocaleDateString('en-US', { weekday: 'short' });
+    const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+    return `${date} · ${day} · ${time}`;
+}
 
 const EC2Details = () => {
     const { instanceId } = useParams();
     const navigate = useNavigate();
 
-    const [showSummary, setShowSummary] = useState(false);
+    const [showSummary,  setShowSummary]  = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [aiSummary, setAiSummary] = useState(null);
+    const [aiSummary,    setAiSummary]    = useState(null);
 
-    // ── Logic untouched ──────────────────────────────────────────────
-    const { data: details, refetch, isFetching, isError, dataUpdatedAt } = useQuery({
+    /* ── Timestamp + sync-counter state ────────────────────────────── */
+    const storageKey = `ec2DetailLastSynced_${instanceId}`;
+    const [lastUpdated,  setLastUpdated]  = useState(() => {
+        try {
+            const saved = localStorage.getItem(storageKey);
+            return saved ? parseInt(saved, 10) : null;
+        } catch { return null; }
+    });
+    const [showRelative, setShowRelative] = useState(false);
+    const [elapsed,      setElapsed]      = useState(null);
+    const [doneTime,     setDoneTime]     = useState(null);
+    const elapsedRef   = useRef(null);
+    const syncStartRef = useRef(null);
+
+    /* tick every second so relative label stays fresh */
+    const [, forceUpdate] = useState(0);
+    useEffect(() => {
+        const id = setInterval(() => forceUpdate(n => n + 1), 1000);
+        return () => clearInterval(id);
+    }, []);
+
+    /* ── Persist last-synced timestamp ─────────────────────────────── */
+    const saveLastSynced = (ts) => {
+        try { localStorage.setItem(storageKey, String(ts)); } catch {}
+        setLastUpdated(ts);
+    };
+
+    /* ── Elapsed timer helpers ──────────────────────────────────────── */
+    const startElapsed = () => {
+        setDoneTime(null);
+        setElapsed('0.0');
+        syncStartRef.current = Date.now();
+        elapsedRef.current = setInterval(() => {
+            const s = ((Date.now() - syncStartRef.current) / 1000).toFixed(1);
+            setElapsed(s);
+        }, 100);
+    };
+
+    const stopElapsed = (success = true) => {
+        if (elapsedRef.current) { clearInterval(elapsedRef.current); elapsedRef.current = null; }
+        const total = syncStartRef.current
+            ? ((Date.now() - syncStartRef.current) / 1000).toFixed(1)
+            : null;
+        setElapsed(null);
+        syncStartRef.current = null;
+        if (total) {
+            setDoneTime({ value: total, success });
+            setTimeout(() => setDoneTime(null), 60 * 60 * 1000);
+        }
+    };
+
+    /* ── Query ──────────────────────────────────────────────────────── */
+    const { data: details, refetch, isFetching, isError } = useQuery({
         queryKey: ['ec2InstanceDetails', instanceId],
         queryFn: async () => {
-            const [id, region] = instanceId.split('__');
-            const url = new URL(`${import.meta.env.VITE_API_URL}/aws/ec2/details`);
-            url.searchParams.append('instance_id', id || instanceId);
-            url.searchParams.append('region', region || 'us-east-1');
-            const res = await secureFetch(url.toString());
-            if (!res.ok) throw new Error(`Failed to fetch EC2 instance details: ${res.statusText}`);
-            return res.json();
+            try {
+                const [id, region] = instanceId.split('__');
+                const url = new URL(`${import.meta.env.VITE_API_URL}/aws/ec2/details`);
+                url.searchParams.append('instance_id', id || instanceId);
+                url.searchParams.append('region', region || 'us-east-1');
+                const res = await secureFetch(url.toString());
+                if (!res.ok) throw new Error(`Failed to fetch EC2 instance details: ${res.statusText}`);
+                const data = await res.json();
+                saveLastSynced(Date.now());
+                stopElapsed(true);
+                return data;
+            } catch (err) {
+                saveLastSynced(Date.now());
+                stopElapsed(false);
+                throw err;
+            }
         },
-        enabled: false,
+        enabled:   false,
         staleTime: Infinity,
+        gcTime:    Infinity,
+        retry:     false,
     });
 
+    /* ── handleSync ─────────────────────────────────────────────────── */
+    const handleSync = () => {
+        if (isFetching) return;
+        startElapsed();
+        refetch();
+    };
+
+    const handleFlip = () => {
+        if (!lastUpdated) return;
+        setShowRelative(v => !v);
+    };
+
+    /* ── Sync button label ──────────────────────────────────────────── */
+    const syncLabel = () => {
+        if (isFetching && elapsed !== null) {
+            return (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ fontFamily: "var(--font-body)", fontSize: 12.5, fontWeight: 600, color: "var(--green)" }}>
+                        Syncing
+                    </span>
+                    <span style={{
+                        fontFamily: "'SF Mono','Fira Code',monospace",
+                        fontSize: 11, fontWeight: 700,
+                        color: "var(--green)",
+                        background: "rgba(0,200,117,0.12)",
+                        border: "1px solid rgba(0,200,117,0.2)",
+                        borderRadius: 6,
+                        padding: "1px 6px",
+                        letterSpacing: "0.5px",
+                        minWidth: 32,
+                        textAlign: "center",
+                    }}>{elapsed}s</span>
+                </span>
+            );
+        }
+        return (
+            <span style={{ fontFamily: "var(--font-body)", fontSize: 12.5, fontWeight: 600, color: isFetching ? "var(--green)" : "#fff" }}>
+                Sync
+            </span>
+        );
+    };
+
+    // ── AI + state helpers ───────────────────────────────────────────
     const hasData = !!details && !details.error;
 
     const generateAISummary = async () => {
@@ -47,14 +168,14 @@ const EC2Details = () => {
         try {
             const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
             const instanceData = {
-                instance_id: details?.core?.instance_id,
-                state: details?.core?.state,
-                type: details?.core?.instance_type,
-                region: details?.core?.region,
-                public_ip: details?.networking?.public_ip,
-                vpc_id: details?.networking?.vpc_id,
+                instance_id:     details?.core?.instance_id,
+                state:           details?.core?.state,
+                type:            details?.core?.instance_type,
+                region:          details?.core?.region,
+                public_ip:       details?.networking?.public_ip,
+                vpc_id:          details?.networking?.vpc_id,
                 security_groups: details?.vpc?.security_groups?.length || 0,
-                tags_count: Object.keys(details?.tags || {}).length,
+                tags_count:      Object.keys(details?.tags || {}).length,
             };
 
             const prompt = `Analyze this EC2 instance configuration and provide exactly 2-3 key insights (each insight one concise sentence under 20 words):
@@ -72,11 +193,9 @@ Format your response as:
 2. Second insight here
 3. Third insight here`;
 
-            const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+            const model  = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
             const result = await model.generateContent(prompt);
-            const response = await result.response;
-            const text = response.text();
-            console.log('Gemini response:', text);
+            const text   = result.response.text();
 
             const insights = text
                 .split('\n')
@@ -84,20 +203,16 @@ Format your response as:
                 .map(line => line.replace(/^\d+[\.)]\s*/, '').trim())
                 .filter(line => line.length > 0);
 
-            if (insights.length > 0) {
-                setAiSummary(insights.slice(0, 3));
-            } else {
-                setAiSummary([
-                    `${instanceId} analyzed successfully`,
-                    'Review security group rules for least privilege access',
-                    'Consider instance right-sizing for cost optimization',
-                ]);
-            }
+            setAiSummary(insights.length > 0 ? insights.slice(0, 3) : [
+                `${instanceId} analyzed successfully`,
+                'Review security group rules for least privilege access',
+                'Consider instance right-sizing for cost optimization',
+            ]);
         } catch (error) {
             console.error('AI Summary generation failed:', error);
-            const state = details?.core?.state;
+            const state    = details?.core?.state;
             const publicIp = details?.networking?.public_ip;
-            const sgCount = details?.vpc?.security_groups?.length || 0;
+            const sgCount  = details?.vpc?.security_groups?.length || 0;
             setAiSummary([
                 `${instanceId} is ${state || 'unknown'}`,
                 publicIp ? 'Public IP exposed - review security groups' : 'Private instance - good for security',
@@ -110,23 +225,14 @@ Format your response as:
 
     const getStateIcon = (state) => {
         switch (state?.toLowerCase()) {
-            case 'running': return <FaPlay className="text-green-500" />;
-            case 'stopped': return <FaPause className="text-orange-500" />;
-            default: return <FaCircle className="text-gray-400" />;
+            case 'running': return <FaPlay  style={{ fontSize: 10, color: '#00C875' }} />;
+            case 'stopped': return <FaPause style={{ fontSize: 10, color: '#F59E0B' }} />;
+            default:        return <FaCircle style={{ fontSize: 10, color: '#8A95A8' }} />;
         }
     };
 
-    const getStateColor = (state) => {
-        switch (state?.toLowerCase()) {
-            case 'running': return 'text-green-600 bg-green-100';
-            case 'stopped': return 'text-orange-600 bg-orange-100';
-            default: return 'text-gray-600 bg-gray-100';
-        }
-    };
-    // ── End logic ────────────────────────────────────────────────────
-
-    const state = details?.core?.state;
-    const isRunning = state?.toLowerCase() === 'running';
+    const state       = details?.core?.state;
+    const isRunning   = state?.toLowerCase() === 'running';
     const stateColor  = isRunning ? '#00C875' : '#F59E0B';
     const stateBg     = isRunning ? 'rgba(0,200,117,0.1)'  : 'rgba(245,158,11,0.1)';
     const stateBorder = isRunning ? 'rgba(0,200,117,0.22)' : 'rgba(245,158,11,0.22)';
@@ -209,15 +315,38 @@ Format your response as:
                 }
                 .ed-orb { animation: ed-orb 8s ease-in-out infinite; }
 
-                .ed-tag {
-                    display: inline-flex;
-                    align-items: center;
-                    padding: 4px 10px;
-                    border-radius: 99px;
-                    font-size: 11.5px;
-                    font-weight: 600;
-                    font-family: var(--font-body);
-                    letter-spacing: 0.1px;
+                /* Sync button springy press */
+                .sync-btn {
+                    transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1),
+                                box-shadow 0.22s ease,
+                                background 0.22s ease,
+                                border-color 0.22s ease;
+                }
+                .sync-btn:not(:disabled):active { transform: scale(0.93); }
+
+                /* Timestamp pill */
+                .ts-pill {
+                    transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+                }
+                .ts-pill:hover {
+                    background: rgba(10,15,30,0.065) !important;
+                    border-color: rgba(10,15,30,0.14) !important;
+                    box-shadow: 0 2px 8px rgba(10,15,30,0.07);
+                }
+                .ts-pill:active { transform: scale(0.96); transition: transform 0.1s ease; }
+
+                /* Latency badge */
+                @keyframes lat-drop {
+                    from { opacity:0; transform:translateY(-6px) scale(0.94); }
+                    to   { opacity:1; transform:translateY(0)    scale(1);    }
+                }
+                @keyframes lat-out {
+                    0%,70% { opacity:1; }
+                    100%   { opacity:0; transform:translateY(4px); }
+                }
+                .lat-badge {
+                    animation: lat-drop 0.32s cubic-bezier(0.34,1.4,0.64,1) both,
+                               lat-out  5s ease-in-out 0.1s forwards;
                 }
             `}</style>
 
@@ -229,11 +358,12 @@ Format your response as:
             }}>
                 <div style={{ maxWidth: 600, margin: "0 auto", padding: "0 16px 64px" }}>
 
-                    {/* ── Back + Sync bar ───────────────────────────────── */}
+                    {/* ── Back + Sync bar ──────────────────────────────────── */}
                     <div className="ed-enter" style={{
                         display: "flex", alignItems: "center", justifyContent: "space-between",
                         padding: "16px 0 20px",
                     }}>
+                        {/* Back button */}
                         <button
                             onClick={() => navigate(-1)}
                             className="ed-press"
@@ -243,29 +373,109 @@ Format your response as:
                             <span style={{ fontFamily: "var(--font-body)", fontSize: 13, fontWeight: 600, color: "var(--accent)", letterSpacing: "0.1px" }}>Back</span>
                         </button>
 
-                        <button
-                            onClick={() => refetch()}
-                            disabled={isFetching}
-                            className="ed-press"
-                            style={{
-                                display: "flex", alignItems: "center", gap: 7,
-                                padding: "8px 16px",
-                                background: isFetching ? "rgba(0,200,117,0.08)" : "var(--ink)",
-                                border: isFetching ? "1.5px solid rgba(0,200,117,0.3)" : "1.5px solid transparent",
-                                borderRadius: 99,
-                                cursor: isFetching ? "default" : "pointer",
-                                boxShadow: isFetching ? "none" : "0 2px 12px rgba(10,15,30,0.22)",
-                                transition: "all 0.22s ease",
-                            }}
-                        >
-                            <FaSync className={isFetching ? "ed-spin" : ""} style={{ fontSize: 10, color: isFetching ? "var(--green)" : "#fff" }} />
-                            <span style={{ fontFamily: "var(--font-body)", fontSize: 12.5, fontWeight: 600, color: isFetching ? "var(--green)" : "#fff" }}>
-                                {isFetching ? "Syncing" : "Sync"}
-                            </span>
-                        </button>
+                        {/* Right side: timestamp pill + sync button + latency badge */}
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+
+                            {/* Timestamp pill + sync button on same row */}
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+
+                                {/* ── Last-updated pill ── */}
+                                {lastUpdated ? (
+                                    <div
+                                        className="ts-pill"
+                                        onClick={handleFlip}
+                                        style={{
+                                            display: "inline-flex", alignItems: "center", gap: 5,
+                                            background: "rgba(10,15,30,0.04)",
+                                            border: "1px solid rgba(10,15,30,0.09)",
+                                            borderRadius: 99,
+                                            padding: "3px 10px",
+                                            cursor: "pointer",
+                                            userSelect: "none",
+                                        }}
+                                        title="Click to switch between exact time and relative time"
+                                    >
+                                        <div style={{
+                                            width: 5, height: 5, borderRadius: "50%", flexShrink: 0,
+                                            background: "var(--green)",
+                                            boxShadow: "0 0 5px var(--green)",
+                                        }} />
+                                        <span style={{
+                                            fontFamily: showRelative ? "var(--font-body)" : "'SF Mono','Fira Code',monospace",
+                                            fontSize: 10.5, fontWeight: 600,
+                                            color: "var(--ink-soft)",
+                                            letterSpacing: showRelative ? "0.1px" : "0.3px",
+                                            whiteSpace: "nowrap",
+                                        }}>
+                                            {showRelative ? timeAgo(lastUpdated) : formatAbsolute(lastUpdated)}
+                                        </span>
+                                        <span style={{ fontSize: 9, color: "var(--muted)", opacity: 0.6 }}>↕</span>
+                                    </div>
+                                ) : (
+                                    <div style={{ fontFamily: "var(--font-body)", fontSize: 11, color: "var(--muted)", opacity: 0.5 }}>
+                                        Not synced yet
+                                    </div>
+                                )}
+
+                                {/* Sync button */}
+                                <button
+                                    onClick={handleSync}
+                                    disabled={isFetching}
+                                    className="sync-btn"
+                                    style={{
+                                        display: "flex", alignItems: "center", gap: 7,
+                                        padding: "8px 16px",
+                                        background: isFetching ? "rgba(0,200,117,0.08)" : "var(--ink)",
+                                        border: isFetching ? "1.5px solid rgba(0,200,117,0.3)" : "1.5px solid transparent",
+                                        borderRadius: 99,
+                                        cursor: isFetching ? "default" : "pointer",
+                                        boxShadow: isFetching ? "none" : "0 2px 12px rgba(10,15,30,0.22)",
+                                    }}
+                                >
+                                    <FaSync
+                                        className={isFetching ? "ed-spin" : ""}
+                                        style={{ fontSize: 10, color: isFetching ? "var(--green)" : "#fff" }}
+                                    />
+                                    {syncLabel()}
+                                </button>
+                            </div>
+
+                            {/* ── Latency badge — drops in below the row ── */}
+                            {doneTime && (
+                                <div className="lat-badge" style={{
+                                    display: "flex", alignItems: "center", gap: 5,
+                                    padding: "4px 10px",
+                                    background: doneTime.success ? "rgba(0,200,117,0.08)" : "rgba(245,158,11,0.08)",
+                                    border: `1px solid ${doneTime.success ? "rgba(0,200,117,0.22)" : "rgba(245,158,11,0.22)"}`,
+                                    borderRadius: 99,
+                                }}>
+                                    {doneTime.success ? (
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
+                                             stroke="#00C875" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="20 6 9 17 4 12"/>
+                                        </svg>
+                                    ) : (
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
+                                             stroke="#F59E0B" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                                        </svg>
+                                    )}
+                                    <span style={{
+                                        fontFamily: "'SF Mono','Fira Code',monospace",
+                                        fontSize: 10.5, fontWeight: 700,
+                                        color: doneTime.success ? "var(--green)" : "#F59E0B",
+                                        letterSpacing: "0.4px",
+                                    }}>{doneTime.value}s</span>
+                                    <span style={{
+                                        fontFamily: "var(--font-body)",
+                                        fontSize: 10, fontWeight: 500, color: "var(--muted)",
+                                    }}>{doneTime.success ? "fetched" : "failed"}</span>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
-                    {/* ── Hero header ───────────────────────────────────── */}
+                    {/* ── Hero header ──────────────────────────────────────── */}
                     <div className="ed-enter2" style={{
                         background: "var(--card)",
                         border: "1px solid var(--border)",
@@ -284,7 +494,6 @@ Format your response as:
                         }} />
 
                         <div style={{ display: "flex", alignItems: "flex-start", gap: 14, position: "relative" }}>
-                            {/* Icon */}
                             <div style={{
                                 width: 48, height: 48, borderRadius: 14, flexShrink: 0,
                                 background: "linear-gradient(135deg, #0052CC 0%, #0066FF 100%)",
@@ -303,14 +512,8 @@ Format your response as:
                                     overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
                                 }}>{instanceId}</h1>
                                 <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-                                    EC2 Instance
-                                    {details?.core?.region ? ` · ${details.core.region}` : ''}
+                                    EC2 Instance{details?.core?.region ? ` · ${details.core.region}` : ''}
                                 </div>
-                                {hasData && (
-                                    <div style={{ fontFamily: "var(--font-body)", fontSize: 10.5, color: "var(--muted)", marginTop: 3, opacity: 0.7 }}>
-                                        Synced {new Date(dataUpdatedAt).toLocaleTimeString()}
-                                    </div>
-                                )}
                             </div>
 
                             {/* State pill */}
@@ -362,7 +565,7 @@ Format your response as:
                         )}
                     </div>
 
-                    {/* ── Error state ───────────────────────────────────── */}
+                    {/* ── Error state ──────────────────────────────────────── */}
                     {isError && (
                         <div className="ed-enter2" style={{
                             display: "flex", alignItems: "flex-start", gap: 12,
@@ -377,7 +580,7 @@ Format your response as:
                         </div>
                     )}
 
-                    {/* ── Empty / no data ───────────────────────────────── */}
+                    {/* ── Empty / no data ──────────────────────────────────── */}
                     {!hasData && !isFetching ? (
                         <div className="ed-enter3" style={{
                             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -405,10 +608,11 @@ Format your response as:
                                 Tap Sync to fetch instance details
                             </div>
                         </div>
+
                     ) : (
                         <div style={{ opacity: isFetching ? 0.5 : 1, transition: "opacity 0.3s ease" }}>
 
-                            {/* ── AI Insights ───────────────────────────── */}
+                            {/* ── AI Insights ───────────────────────────────── */}
                             {hasData && (
                                 <div className="ed-enter3" style={{ marginBottom: 14 }}>
                                     {!showSummary ? (
@@ -504,12 +708,12 @@ Format your response as:
                                 </div>
                             )}
 
-                            {/* ── Core Configuration card ───────────────── */}
+                            {/* ── Core Configuration card ───────────────────── */}
                             <div className="ed-enter4" style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, boxShadow: "var(--s-card)", overflow: "hidden", marginBottom: 14 }}>
                                 <SectionHeader label="Core Configuration" />
-                                <EdRow icon={<FaServer style={{ fontSize: 11, color: "var(--muted)" }} />}      label="Instance Type"      value={details?.core?.instance_type} />
-                                <EdRow icon={<FaGlobe  style={{ fontSize: 11, color: "var(--muted)" }} />}      label="Region"             value={details?.core?.region} />
-                                <EdRow icon={<FaGlobe  style={{ fontSize: 11, color: "var(--muted)" }} />}      label="Availability Zone"  value={details?.core?.placement?.availability_zone} last />
+                                <EdRow icon={<FaServer style={{ fontSize: 11, color: "var(--muted)" }} />} label="Instance Type"     value={details?.core?.instance_type} />
+                                <EdRow icon={<FaGlobe  style={{ fontSize: 11, color: "var(--muted)" }} />} label="Region"            value={details?.core?.region} />
+                                <EdRow icon={<FaGlobe  style={{ fontSize: 11, color: "var(--muted)" }} />} label="Availability Zone" value={details?.core?.placement?.availability_zone} last />
                                 {/* State row inline */}
                                 <div style={{
                                     display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -535,10 +739,9 @@ Format your response as:
                                 </div>
                             </div>
 
-                            {/* ── Networking card ───────────────────────── */}
+                            {/* ── Networking card ───────────────────────────── */}
                             <div className="ed-enter5" style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, boxShadow: "var(--s-card)", overflow: "hidden", marginBottom: 14 }}>
                                 <SectionHeader icon={<FaNetworkWired style={{ fontSize: 10, color: "var(--muted)" }} />} label="Networking" />
-                                {/* Public IP highlighted */}
                                 <div style={{
                                     display: "flex", alignItems: "center", justifyContent: "space-between",
                                     padding: "12px 16px", gap: 12,
@@ -564,7 +767,7 @@ Format your response as:
                                 <EdRow icon={<FaShieldAlt   style={{ fontSize: 11, color: "var(--muted)" }} />} label="Security Groups" value={details?.vpc?.security_groups?.join(', ') || 'None'} last />
                             </div>
 
-                            {/* ── Storage card ──────────────────────────── */}
+                            {/* ── Storage card ──────────────────────────────── */}
                             {details?.storage?.length > 0 && (
                                 <div className="ed-enter6" style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, boxShadow: "var(--s-card)", overflow: "hidden", marginBottom: 14 }}>
                                     <SectionHeader icon={<FaHdd style={{ fontSize: 10, color: "var(--muted)" }} />} label={`Block Devices (${details.storage.length})`} />
@@ -599,7 +802,7 @@ Format your response as:
                                 </div>
                             )}
 
-                            {/* ── Tags card ─────────────────────────────── */}
+                            {/* ── Tags card ─────────────────────────────────── */}
                             {Object.keys(details?.tags || {}).length > 0 && (
                                 <div className="ed-enter7" style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, boxShadow: "var(--s-card)", overflow: "hidden" }}>
                                     <SectionHeader icon={<FaTag style={{ fontSize: 10, color: "var(--muted)" }} />} label={`Tags (${Object.keys(details.tags || {}).length})`} />
@@ -613,8 +816,7 @@ Format your response as:
                                                 <span style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 600, color: "var(--ink-soft)", flexShrink: 0 }}>{key}</span>
                                                 <span style={{
                                                     fontFamily: "'Plus Jakarta Sans', monospace",
-                                                    fontSize: 11, fontWeight: 500,
-                                                    color: "var(--muted)",
+                                                    fontSize: 11, fontWeight: 500, color: "var(--muted)",
                                                     background: "rgba(10,15,30,0.03)", border: "1px solid var(--border)",
                                                     borderRadius: 6, padding: "3px 8px",
                                                     overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", maxWidth: "55%",
@@ -633,7 +835,7 @@ Format your response as:
     );
 };
 
-// ── Sub-components ────────────────────────────────────────────────
+// ── Sub-components ─────────────────────────────────────────────────────
 
 const SectionHeader = ({ label, icon }) => (
     <div style={{

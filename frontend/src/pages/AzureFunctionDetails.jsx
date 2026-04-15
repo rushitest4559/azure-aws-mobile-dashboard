@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -12,7 +12,35 @@ import { secureFetch } from '../api';
  * AzureFunctionDetails — Cloud Control
  * Design: EKS token system + Apple-like detail page feel
  * Logic: unchanged
+ *
+ * NEW (ported from EksList):
+ *  • Last-updated timestamp pill — click to flip between absolute & relative
+ *  • Sync button shows a live seconds counter while fetching
  */
+
+/* ── Relative-time helper ───────────────────────────────────────────── */
+function timeAgo(ts) {
+    if (!ts) return null;
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 5)    return 'just now';
+    if (diff < 60)   return `${diff}s ago`;
+    if (diff < 3600) { const m = Math.floor(diff / 60); return `${m} min${m !== 1 ? 's' : ''} ago`; }
+    if (diff < 86400) { const h = Math.floor(diff / 3600); return `${h} hr${h !== 1 ? 's' : ''} ago`; }
+    const d = Math.floor(diff / 86400);
+    return `${d} day${d !== 1 ? 's' : ''} ago`;
+}
+
+/* ── Absolute-time helper ───────────────────────────────────────────── */
+function formatAbsolute(ts) {
+    if (!ts) return null;
+    const d    = new Date(ts);
+    const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const day  = d.toLocaleDateString('en-US', { weekday: 'short' });
+    const time = d.toLocaleTimeString('en-US', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
+    });
+    return `${date} · ${day} · ${time}`;
+}
 
 const AzureFunctionDetails = () => {
     const { functionName } = useParams();
@@ -20,28 +48,141 @@ const AzureFunctionDetails = () => {
     const navigate = useNavigate();
     const resourceGroup = searchParams.get('rg') || 'unknown';
 
-    const [showSummary, setShowSummary] = useState(false);
+    const [showSummary,  setShowSummary]  = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [aiSummary, setAiSummary] = useState(null);
+    const [aiSummary,    setAiSummary]    = useState(null);
 
     const subscriptionId = import.meta.env.VITE_AZURE_SUBSCRIPTION_ID;
 
+    /* ── NEW state ──────────────────────────────────────────────────── */
+    const [lastUpdated,  setLastUpdated]  = useState(() => {
+        try {
+            const key   = `azureFuncDetailsLastSynced_${functionName}`;
+            const saved = localStorage.getItem(key);
+            return saved ? parseInt(saved, 10) : null;
+        } catch { return null; }
+    });
+    const [showRelative, setShowRelative] = useState(false);
+    const [elapsed,      setElapsed]      = useState(null);
+    const [doneTime,     setDoneTime]     = useState(null);
+    const elapsedRef   = useRef(null);
+    const syncStartRef = useRef(null);
+
+    /* relative label ticks every second */
+    const [, forceUpdate] = useState(0);
+    useEffect(() => {
+        const id = setInterval(() => forceUpdate(n => n + 1), 1000);
+        return () => clearInterval(id);
+    }, []);
+
+    /* ── Persist last-synced timestamp ─────────────────────────────── */
+    const saveLastSynced = useCallback((ts) => {
+        try {
+            const key = `azureFuncDetailsLastSynced_${functionName}`;
+            localStorage.setItem(key, String(ts));
+        } catch {}
+        setLastUpdated(ts);
+    }, [functionName]);
+
+    const startElapsed = () => {
+        setDoneTime(null);
+        setElapsed('0.0');
+        syncStartRef.current = Date.now();
+        elapsedRef.current   = setInterval(() => {
+            const s = ((Date.now() - syncStartRef.current) / 1000).toFixed(1);
+            setElapsed(s);
+        }, 100);
+    };
+
+    const stopElapsed = (success = true) => {
+        if (elapsedRef.current) {
+            clearInterval(elapsedRef.current);
+            elapsedRef.current = null;
+        }
+        const total = syncStartRef.current
+            ? ((Date.now() - syncStartRef.current) / 1000).toFixed(1)
+            : null;
+        setElapsed(null);
+        syncStartRef.current = null;
+        if (total) {
+            setDoneTime({ value: total, success });
+            setTimeout(() => setDoneTime(null), 60 * 60 * 1000);
+        }
+    };
+
     // ── Logic untouched ──────────────────────────────────────────────
-    const { data: details, refetch, isFetching, isError, dataUpdatedAt } = useQuery({
+    const { data: details, refetch, isFetching, isError } = useQuery({
         queryKey: ['azureFunctionDetails', functionName, resourceGroup],
         queryFn: async () => {
-            if (!subscriptionId) throw new Error('Azure subscription ID not configured');
-            const res = await secureFetch(
-                `${import.meta.env.VITE_API_URL}/azure/functions/details?subscription_id=${subscriptionId}&resource_group=${resourceGroup}&name=${functionName}`
-            );
-            if (!res.ok) throw new Error(`Failed to fetch Function details: ${res.statusText}`);
-            return res.json();
+            try {
+                if (!subscriptionId) throw new Error('Azure subscription ID not configured');
+                const res = await secureFetch(
+                    `${import.meta.env.VITE_API_URL}/azure/functions/details?subscription_id=${subscriptionId}&resource_group=${resourceGroup}&name=${functionName}`
+                );
+                if (!res.ok) throw new Error(`Failed to fetch Function details: ${res.statusText}`);
+                const data = await res.json();
+                saveLastSynced(Date.now());
+                stopElapsed(true);
+                return data;
+            } catch (err) {
+                saveLastSynced(Date.now());
+                stopElapsed(false);
+                throw err;
+            }
         },
-        enabled: false,
+        enabled:   false,
         staleTime: Infinity,
     });
 
     const hasData = !!details;
+
+    /* ── handleSync: wraps refetch + starts counter ─────────────────── */
+    const handleSync = () => {
+        if (isFetching) return;
+        startElapsed();
+        refetch();
+    };
+
+    const handleFlip = () => {
+        if (!lastUpdated) return;
+        setShowRelative(v => !v);
+    };
+
+    /* ── Sync button label ──────────────────────────────────────────── */
+    const syncLabel = () => {
+        if (isFetching && elapsed !== null) {
+            return (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{
+                        fontFamily: "var(--font-body)",
+                        fontSize: 12.5, fontWeight: 600,
+                        color: "var(--green)",
+                        letterSpacing: "0.1px",
+                    }}>Syncing</span>
+                    <span style={{
+                        fontFamily: "'SF Mono', 'Fira Code', monospace",
+                        fontSize: 11, fontWeight: 700,
+                        color: "var(--green)",
+                        background: "rgba(0,200,117,0.12)",
+                        border: "1px solid rgba(0,200,117,0.2)",
+                        borderRadius: 6,
+                        padding: "1px 6px",
+                        letterSpacing: "0.5px",
+                        minWidth: 32,
+                        textAlign: "center",
+                    }}>{elapsed}s</span>
+                </span>
+            );
+        }
+        return (
+            <span style={{
+                fontFamily: "var(--font-body)",
+                fontSize: 12.5, fontWeight: 600,
+                color: isFetching ? "var(--green)" : "#fff",
+                letterSpacing: "0.1px",
+            }}>{isFetching ? "Syncing" : "Sync"}</span>
+        );
+    };
 
     const generateAISummary = async () => {
         setIsGenerating(true);
@@ -49,17 +190,17 @@ const AzureFunctionDetails = () => {
         try {
             const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
             const functionData = {
-                name: functionName,
-                resource_group: resourceGroup,
-                location: details?.location,
-                kind: details?.kind,
-                state: details?.state,
-                host_names: details?.host_names,
-                enabled: details?.enabled,
-                https_only: details?.https_only,
+                name:             functionName,
+                resource_group:   resourceGroup,
+                location:         details?.location,
+                kind:             details?.kind,
+                state:            details?.state,
+                host_names:       details?.host_names,
+                enabled:          details?.enabled,
+                https_only:       details?.https_only,
                 app_service_plan: details?.app_service_plan,
-                sku: details?.sku,
-                tags: details?.tags,
+                sku:              details?.sku,
+                tags:             details?.tags,
             };
 
             const prompt = `Analyze this Azure Function App configuration and provide exactly 2-3 key insights (each insight should be one concise sentence under 20 words):
@@ -78,11 +219,9 @@ Format your response as:
 2. Second insight here
 3. Third insight here`;
 
-            const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+            const model  = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
             const result = await model.generateContent(prompt);
-            const response = await result.response;
-            const text = response.text();
-            console.log('Gemini response:', text);
+            const text   = result.response.text();
 
             const insights = text
                 .split('\n')
@@ -90,24 +229,19 @@ Format your response as:
                 .map(line => line.replace(/^\d+[\.)]\s*/, '').trim())
                 .filter(line => line.length > 0);
 
-            if (insights.length > 0) {
-                setAiSummary(insights.slice(0, 3));
-            } else {
-                setAiSummary([
-                    text.trim() || `${functionName} analyzed successfully`,
-                    'Review App Service Plan for cost optimization opportunities',
-                    'Consider enabling HTTPS-only for enhanced security',
-                ]);
-            }
+            setAiSummary(insights.length > 0 ? insights.slice(0, 3) : [
+                text.trim() || `${functionName} analyzed successfully`,
+                'Review App Service Plan for cost optimization opportunities',
+                'Consider enabling HTTPS-only for enhanced security',
+            ]);
         } catch (error) {
             console.error('AI Summary generation failed:', error);
-            const isRunning = details?.state?.toLowerCase() === 'running';
-            const httpsOnly = details?.https_only;
-            const planName = details?.app_service_plan?.name;
             setAiSummary([
-                `${functionName} is ${isRunning ? 'running' : 'stopped'}`,
-                httpsOnly ? 'HTTPS-only is enabled for security' : 'Consider enabling HTTPS-only mode',
-                planName ? `Running on ${planName} App Service Plan` : 'Review App Service Plan configuration',
+                `${functionName} is ${details?.state?.toLowerCase() === 'running' ? 'running' : 'stopped'}`,
+                details?.https_only ? 'HTTPS-only is enabled for security' : 'Consider enabling HTTPS-only mode',
+                details?.app_service_plan?.name
+                    ? `Running on ${details.app_service_plan.name} App Service Plan`
+                    : 'Review App Service Plan configuration',
             ]);
         } finally {
             setIsGenerating(false);
@@ -115,7 +249,7 @@ Format your response as:
     };
     // ── End logic ────────────────────────────────────────────────────
 
-    const isRunning = details?.state?.toLowerCase() === 'running';
+    const isRunning   = details?.state?.toLowerCase() === 'running';
     const stateColor  = isRunning ? '#00C875' : '#F59E0B';
     const stateBg     = isRunning ? 'rgba(0,200,117,0.1)'  : 'rgba(245,158,11,0.1)';
     const stateBorder = isRunning ? 'rgba(0,200,117,0.22)' : 'rgba(245,158,11,0.22)';
@@ -220,6 +354,45 @@ Format your response as:
                     font-family: var(--font-body);
                     letter-spacing: 0.1px;
                 }
+
+                /* ── Sync button springy press ──────────────────── */
+                .sync-btn-fd {
+                    transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1),
+                                box-shadow 0.22s ease,
+                                background 0.22s ease,
+                                border-color 0.22s ease;
+                }
+                .sync-btn-fd:not(:disabled):active {
+                    transform: scale(0.93);
+                }
+
+                /* ── Timestamp pill hover glow ──────────────────── */
+                .ts-pill-fd {
+                    transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+                }
+                .ts-pill-fd:hover {
+                    background: rgba(10,15,30,0.065) !important;
+                    border-color: rgba(10,15,30,0.14) !important;
+                    box-shadow: 0 2px 8px rgba(10,15,30,0.07);
+                }
+                .ts-pill-fd:active {
+                    transform: scale(0.96);
+                    transition: transform 0.1s ease;
+                }
+
+                /* ── Latency badge ──────────────────────────────── */
+                @keyframes lat-drop-fd {
+                    from { opacity:0; transform:translateY(-6px) scale(0.94); }
+                    to   { opacity:1; transform:translateY(0)    scale(1);    }
+                }
+                @keyframes lat-out-fd {
+                    0%,70% { opacity:1; }
+                    100%   { opacity:0; transform:translateY(4px); }
+                }
+                .lat-badge-fd {
+                    animation: lat-drop-fd 0.32s cubic-bezier(0.34,1.4,0.64,1) both,
+                               lat-out-fd  5s ease-in-out 0.1s forwards;
+                }
             `}</style>
 
             <div className="fd" style={{
@@ -235,6 +408,7 @@ Format your response as:
                         display: "flex", alignItems: "center", justifyContent: "space-between",
                         padding: "16px 0 20px",
                     }}>
+                        {/* Left: back button */}
                         <button
                             onClick={() => navigate(-1)}
                             className="fd-press"
@@ -252,31 +426,116 @@ Format your response as:
                             }}>Back</span>
                         </button>
 
-                        <button
-                            onClick={() => refetch()}
-                            disabled={isFetching}
-                            className="fd-press"
-                            style={{
-                                display: "flex", alignItems: "center", gap: 7,
-                                padding: "8px 16px",
-                                background: isFetching ? "rgba(0,200,117,0.08)" : "var(--ink)",
-                                border: isFetching ? "1.5px solid rgba(0,200,117,0.3)" : "1.5px solid transparent",
-                                borderRadius: 99,
-                                cursor: isFetching ? "default" : "pointer",
-                                boxShadow: isFetching ? "none" : "0 2px 12px rgba(10,15,30,0.22)",
-                                transition: "all 0.22s ease",
-                            }}
-                        >
-                            <FaSync
-                                className={isFetching ? "fd-spin" : ""}
-                                style={{ fontSize: 10, color: isFetching ? "var(--green)" : "#fff" }}
-                            />
-                            <span style={{
-                                fontFamily: "var(--font-body)",
-                                fontSize: 12.5, fontWeight: 600,
-                                color: isFetching ? "var(--green)" : "#fff",
-                            }}>{isFetching ? "Syncing" : "Sync"}</span>
-                        </button>
+                        {/* Right: timestamp pill + sync button + latency badge */}
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                            {/* Timestamp pill + sync button on same row */}
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+
+                                {/* ── Last-updated timestamp pill ─────────── */}
+                                {lastUpdated ? (
+                                    <div
+                                        onClick={handleFlip}
+                                        className="ts-pill-fd"
+                                        style={{
+                                            display: "inline-flex", alignItems: "center", gap: 5,
+                                            background: "rgba(10,15,30,0.04)",
+                                            border: "1px solid rgba(10,15,30,0.09)",
+                                            borderRadius: 99,
+                                            padding: "4px 10px",
+                                            cursor: "pointer",
+                                            userSelect: "none",
+                                        }}
+                                        title="Click to switch between exact time and relative time"
+                                    >
+                                        <div style={{
+                                            width: 5, height: 5, borderRadius: "50%", flexShrink: 0,
+                                            background: "var(--green)",
+                                            boxShadow: "0 0 5px var(--green)",
+                                        }} />
+                                        <span style={{
+                                            fontFamily: showRelative
+                                                ? "var(--font-body)"
+                                                : "'SF Mono','Fira Code',monospace",
+                                            fontSize: 11, fontWeight: 600,
+                                            color: "var(--ink-soft)",
+                                            letterSpacing: showRelative ? "0.1px" : "0.3px",
+                                            whiteSpace: "nowrap",
+                                        }}>
+                                            {showRelative ? timeAgo(lastUpdated) : formatAbsolute(lastUpdated)}
+                                        </span>
+                                        <span style={{
+                                            fontSize: 9, color: "var(--muted)", opacity: 0.6,
+                                            fontFamily: "var(--font-body)",
+                                        }}>↕</span>
+                                    </div>
+                                ) : (
+                                    <div style={{
+                                        fontFamily: "var(--font-body)",
+                                        fontSize: 11, color: "var(--muted)", opacity: 0.5,
+                                    }}>Not synced yet</div>
+                                )}
+
+                                {/* ── Sync button ────────────────────────── */}
+                                <button
+                                    onClick={handleSync}
+                                    disabled={isFetching}
+                                    className="sync-btn-fd"
+                                    style={{
+                                        display: "flex", alignItems: "center", gap: 7,
+                                        padding: "8px 16px",
+                                        background: isFetching ? "rgba(0,200,117,0.08)" : "var(--ink)",
+                                        border: isFetching
+                                            ? "1.5px solid rgba(0,200,117,0.3)"
+                                            : "1.5px solid transparent",
+                                        borderRadius: 99,
+                                        cursor: isFetching ? "default" : "pointer",
+                                        boxShadow: isFetching ? "none" : "0 2px 12px rgba(10,15,30,0.22)",
+                                    }}
+                                >
+                                    <FaSync
+                                        className={isFetching ? "fd-spin" : ""}
+                                        style={{ fontSize: 10, color: isFetching ? "var(--green)" : "#fff" }}
+                                    />
+                                    {syncLabel()}
+                                </button>
+                            </div>
+
+                            {/* ── Latency badge — drops in after sync ────── */}
+                            {doneTime && (
+                                <div className="lat-badge-fd" style={{
+                                    display: "flex", alignItems: "center", gap: 5,
+                                    padding: "4px 10px",
+                                    background: doneTime.success
+                                        ? "rgba(0,200,117,0.08)"
+                                        : "rgba(245,158,11,0.08)",
+                                    border: `1px solid ${doneTime.success ? "rgba(0,200,117,0.22)" : "rgba(245,158,11,0.22)"}`,
+                                    borderRadius: 99,
+                                }}>
+                                    {doneTime.success ? (
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
+                                             stroke="#00C875" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="20 6 9 17 4 12"/>
+                                        </svg>
+                                    ) : (
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
+                                             stroke="#F59E0B" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                                        </svg>
+                                    )}
+                                    <span style={{
+                                        fontFamily: "'SF Mono','Fira Code',monospace",
+                                        fontSize: 10.5, fontWeight: 700,
+                                        color: doneTime.success ? "var(--green)" : "#F59E0B",
+                                        letterSpacing: "0.4px",
+                                    }}>{doneTime.value}s</span>
+                                    <span style={{
+                                        fontFamily: "var(--font-body)",
+                                        fontSize: 10, fontWeight: 500,
+                                        color: "var(--muted)",
+                                    }}>{doneTime.success ? "fetched" : "failed"}</span>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {/* ── Hero header ───────────────────────────────────── */}
@@ -290,7 +549,6 @@ Format your response as:
                         position: "relative",
                         overflow: "hidden",
                     }}>
-                        {/* Subtle background orb */}
                         <div className="fd-orb" style={{
                             position: "absolute", top: "50%", right: "-10%",
                             width: 220, height: 180,
@@ -299,7 +557,6 @@ Format your response as:
                         }} />
 
                         <div style={{ display: "flex", alignItems: "flex-start", gap: 14, position: "relative" }}>
-                            {/* Icon */}
                             <div style={{
                                 width: 48, height: 48, borderRadius: 14, flexShrink: 0,
                                 background: "linear-gradient(135deg, #0052CC 0%, #0066FF 100%)",
@@ -322,15 +579,9 @@ Format your response as:
                                     fontSize: 12, color: "var(--muted)", marginTop: 4,
                                     overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
                                 }}>Function App · {resourceGroup}</div>
-                                {hasData && (
-                                    <div style={{
-                                        fontFamily: "var(--font-body)",
-                                        fontSize: 10.5, color: "var(--muted)", marginTop: 3, opacity: 0.7,
-                                    }}>Synced {new Date(dataUpdatedAt).toLocaleTimeString()}</div>
-                                )}
                             </div>
 
-                            {/* State pill — top right */}
+                            {/* State pill */}
                             {details?.state && (
                                 <div style={{
                                     display: "flex", alignItems: "center", gap: 5,
@@ -713,15 +964,11 @@ const FdRow = ({ icon, label, value, last }) => (
     }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
             {icon}
-            <span style={{
-                fontFamily: "var(--font-body)",
-                fontSize: 13, color: "var(--muted)",
-            }}>{label}</span>
+            <span style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--muted)" }}>{label}</span>
         </div>
         <span style={{
             fontFamily: "var(--font-display)",
-            fontSize: 13, fontWeight: 600,
-            color: "var(--ink-soft)",
+            fontSize: 13, fontWeight: 600, color: "var(--ink-soft)",
             flexShrink: 0, maxWidth: "55%",
             overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
             textAlign: "right",
@@ -735,10 +982,7 @@ const SecurityFdRow = ({ label, active, last }) => (
         padding: "12px 16px", gap: 12,
         borderBottom: last ? "none" : "1px solid var(--border)",
     }}>
-        <span style={{
-            fontFamily: "var(--font-body)",
-            fontSize: 13, color: "var(--muted)",
-        }}>{label}</span>
+        <span style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--muted)" }}>{label}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
             <span style={{
                 fontFamily: "var(--font-display)",
